@@ -1,0 +1,22 @@
+[package]
+name = "typst-ios"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "typst_ios"
+crate-type = ["staticlib"]
+
+[dependencies]
+typst         = "0.14"
+typst-pdf     = "0.14"
+typst-assets  = { version = "0.14", features = ["fonts"] }
+# Package download
+ureq          = "2"
+tar           = "0.4"
+flate2        = "1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true

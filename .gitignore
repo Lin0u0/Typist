@@ -1,0 +1,54 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+*.xcuserstate
+project.xcworkspace/xcuserdata/
+DerivedData/
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+
+# Swift Package Manager
+.build/
+Packages/
+Package.pins
+Package.resolved
+.swiftpm/
+
+# Rust
+target/
+Cargo.lock
+!Cargo.lock  # Keep Cargo.lock for binary crates, remove this line if it's a library
+*.rs.bk
+
+# Static libraries (should be built from source)
+# Note: Frameworks/typst_ios.xcframework contains prebuilt libs
+# If you want to exclude them, uncomment below:
+# *.a
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+build/
+dist/
+
+# Environment
+.env
+.env.local
