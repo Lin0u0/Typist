@@ -21,10 +21,16 @@ private extension View {
             self
         }
     }
+
+    @ViewBuilder
+    func modify<T: View>(@ViewBuilder _ transform: (Self) -> T) -> some View {
+        transform(self)
+    }
 }
 
 struct DocumentEditorView: View {
     @Bindable var document: TypistDocument
+    var isSidebarVisible: Bool = false
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(ThemeManager.self) private var themeManager
 
@@ -36,6 +42,7 @@ struct DocumentEditorView: View {
 
     // MARK: - UI state
     @State private var selectedTab: Int = 0
+    @State private var editorFraction: CGFloat = 0.5
     @State private var showingProjectSettings = false
     @State private var showingPhotoPicker = false
     @State private var showingFileBrowser = false
@@ -61,6 +68,7 @@ struct DocumentEditorView: View {
             onPhotoTapped: { showingPhotoPicker = true }
         )
         .background(Color.catppuccinBase)
+        .ignoresSafeArea(edges: .bottom)
     }
 
     private var previewPane: some View {
@@ -68,13 +76,40 @@ struct DocumentEditorView: View {
             .background(Color.catppuccinMantle)
     }
 
+    private func splitHandle(totalWidth: CGFloat) -> some View {
+        Capsule()
+            .fill(Color.catppuccinSubtext1)
+            .frame(width: 4, height: 36)
+            .frame(width: 20)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .named("splitContainer"))
+                    .onChanged { value in
+                        let raw = value.location.x / totalWidth
+                        withTransaction(Transaction(animation: nil)) {
+                            editorFraction = min(0.8, max(0.2, raw))
+                        }
+                    }
+            )
+            .simultaneousGesture(
+                TapGesture(count: 2).onEnded {
+                    withAnimation(.spring(duration: 0.3)) { editorFraction = 0.5 }
+                }
+            )
+    }
+
     @ViewBuilder
     private var contentLayout: some View {
         if sizeClass == .regular {
-            HStack(spacing: 0) {
-                editorPane
-                Divider().background(Color.catppuccinSurface0)
-                previewPane
+            GeometryReader { geo in
+                let total = geo.size.width
+                HStack(spacing: 0) {
+                    editorPane
+                        .frame(width: total * editorFraction)
+                    splitHandle(totalWidth: total)
+                    previewPane
+                }
+                .coordinateSpace(name: "splitContainer")
             }
         } else {
             VStack(spacing: 0) {
@@ -120,9 +155,16 @@ struct DocumentEditorView: View {
 
     var body: some View {
         contentLayout
+        .safeAreaInset(edge: .leading, spacing: 0) {
+            if sizeClass == .regular && isSidebarVisible {
+                Color.catppuccinBase.frame(width: 8)
+            }
+        }
         .navigationTitle(document.title)
         .navigationSubtitleCompat(currentFileName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.catppuccinMantle, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .background(Color.catppuccinMantle.ignoresSafeArea())
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

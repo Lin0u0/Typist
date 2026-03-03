@@ -63,6 +63,8 @@ struct ProjectSettingsSheet: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.catppuccinBase)
             .navigationTitle("Project Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

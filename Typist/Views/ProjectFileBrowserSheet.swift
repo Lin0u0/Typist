@@ -108,6 +108,8 @@ struct ProjectFileBrowserSheet: View {
                     Text("Fonts")
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.catppuccinBase)
             .navigationTitle("Project Files")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

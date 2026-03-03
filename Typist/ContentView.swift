@@ -11,21 +11,26 @@ import SwiftData
 struct ContentView: View {
     @State private var selectedDocument: TypistDocument?
     @State private var themeManager = ThemeManager()
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             DocumentListView(selectedDocument: $selectedDocument)
         } detail: {
             if let document = selectedDocument {
-                DocumentEditorView(document: document)
+                DocumentEditorView(document: document, isSidebarVisible: columnVisibility != .detailOnly)
+                    .id(document.persistentModelID)
             } else {
                 ContentUnavailableView(
                     "No Document Selected",
                     systemImage: "doc.text",
                     description: Text("Select a document from the list or create a new one.")
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.catppuccinBase.ignoresSafeArea())
             }
         }
+        .background(Color.catppuccinMantle.ignoresSafeArea())
         .tint(.catppuccinBlue)
         .preferredColorScheme(themeManager.colorScheme)
         .environment(themeManager)

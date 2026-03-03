@@ -52,7 +52,7 @@ final class TypstTextView: UITextView {
         smartDashesType = .no
         smartQuotesType = .no
         spellCheckingType = .no
-        backgroundColor = .systemBackground
+        backgroundColor = .clear
         textColor = .label
     }
 

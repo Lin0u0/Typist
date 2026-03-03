@@ -27,6 +27,8 @@ struct PDFKitView: UIViewRepresentable {
         // Preserve scroll position when the document updates.
         let dest = pdfView.currentDestination
         pdfView.document = document
+        // PDFView may reset its background when a new document is set.
+        pdfView.backgroundColor = .catppuccinMantle
         if let dest {
             pdfView.go(to: dest)
         }
@@ -63,21 +65,21 @@ struct PreviewPane: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
         }
-        .onChange(of: source, initial: true) {
-            compiler.compile(source: source, fontPaths: fontPaths, rootDir: rootDir)
-        }
-        .onChange(of: fontPaths) {
-            compiler.compile(source: source, fontPaths: fontPaths, rootDir: rootDir)
-        }
-        .onChange(of: rootDir) {
-            compiler.compile(source: source, fontPaths: fontPaths, rootDir: rootDir)
-        }
-        .onChange(of: compileToken) {
-            compiler.compile(source: source, fontPaths: fontPaths, rootDir: rootDir)
-        }
+        .onChange(of: source, initial: true) { compileIfNeeded() }
+        .onChange(of: fontPaths) { compileIfNeeded() }
+        .onChange(of: rootDir) { compileIfNeeded() }
+        .onChange(of: compileToken) { compileIfNeeded() }
         .onDisappear {
             compiler.cancel()
         }
+    }
+
+    /// Only compile when the source contains meaningful content.
+    private func compileIfNeeded() {
+        guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+        compiler.compile(source: source, fontPaths: fontPaths, rootDir: rootDir)
     }
 
     // MARK: Sub-views

@@ -9,7 +9,7 @@ import SwiftData
 struct DocumentListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(ThemeManager.self) private var themeManager
-    @Query(sort: \TypistDocument.modifiedAt, order: .reverse) private var documents: [TypistDocument]
+    @Query(sort: \TypistDocument.createdAt, order: .reverse) private var documents: [TypistDocument]
     @Binding var selectedDocument: TypistDocument?
     @State private var renamingDocument: TypistDocument?
     @State private var newTitle: String = ""
@@ -29,8 +29,9 @@ struct DocumentListView: View {
             .navigationTitle("Typist")
             .searchable(text: $searchText, prompt: "Search documents")
             .toolbar { toolbarContent }
+            .toolbarBackground(Color.catppuccinMantle, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .overlay { exportOverlay }
-            .background(Color.catppuccinMantle.ignoresSafeArea())
             .sheet(item: $exportURL) { ActivityView(activityItems: [$0]) }
             .alert("Export Error", isPresented: Binding(
                 get: { exportError != nil },
@@ -88,6 +89,7 @@ struct DocumentListView: View {
                     }
             }
         }
+        .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Color.catppuccinMantle)
     }
@@ -98,13 +100,13 @@ struct DocumentListView: View {
                 Text(document.title)
                     .font(.headline)
                     .lineLimit(1)
-                Text(document.modifiedAt.formatted(date: .abbreviated, time: .shortened))
+                Text(document.createdAt.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption)
                     .foregroundStyle(Color.catppuccinSubtext1)
             }
             .padding(.vertical, 2)
         }
-        .listRowBackground(Color.catppuccinSurface0.clipShape(ContainerRelativeShape()))
+        .listRowBackground(Color.catppuccinSurface0)
         .contextMenu {
             Button("Rename") {
                 renamingDocument = document
@@ -136,7 +138,12 @@ struct DocumentListView: View {
             Menu {
                 Picker("Theme", selection: Binding(
                     get: { themeManager.themeID },
-                    set: { themeManager.themeID = $0 }
+                    set: { id in
+                        guard id != themeManager.themeID else { return }
+                        withTransaction(Transaction(animation: nil)) {
+                            themeManager.themeID = id
+                        }
+                    }
                 )) {
                     Text("Auto").tag("system")
                     Text("Mocha · Dark").tag("mocha")
