@@ -29,6 +29,8 @@ pub struct TypstOptions {
     pub font_path_count: usize,
     /// Directory used to cache downloaded @preview packages.
     pub cache_dir: *const c_char,
+    /// Root directory for resolving local file references (e.g. #image("images/photo.jpg")).
+    pub root_dir: *const c_char,
 }
 
 // ---------------------------------------------------------------------------
@@ -43,6 +45,8 @@ struct SimpleWorld {
     source: Source,
     /// Root directory for the package cache (if provided).
     pkg_cache_root: Option<PathBuf>,
+    /// Root directory for resolving local file references (images, imports).
+    root_dir: Option<PathBuf>,
     /// Maps "ns/name/ver" → Ok(extracted dir) | Err(message).
     pkg_dirs: Mutex<HashMap<String, Result<PathBuf, String>>>,
     /// Per-request source cache (avoids re-reading the same file).
@@ -72,6 +76,7 @@ impl SimpleWorld {
         eprintln!("[typst-ffi] bundled fonts: {}", bundled_count);
 
         let mut pkg_cache_root: Option<PathBuf> = None;
+        let mut root_dir: Option<PathBuf> = None;
 
         if !options.is_null() {
             let opts = &*options;
@@ -113,6 +118,16 @@ impl SimpleWorld {
                     pkg_cache_root = Some(PathBuf::from(s));
                 }
             }
+
+            // --- Root directory for local file resolution ---
+            if !opts.root_dir.is_null() {
+                if let Ok(s) = CStr::from_ptr(opts.root_dir).to_str() {
+                    if !s.is_empty() {
+                        root_dir = Some(PathBuf::from(s));
+                        eprintln!("[typst-ffi] root_dir: {}", s);
+                    }
+                }
+            }
         }
 
         let main_id = FileId::new(None, VirtualPath::new("main.typ"));
@@ -125,6 +140,7 @@ impl SimpleWorld {
             main_id,
             source,
             pkg_cache_root,
+            root_dir,
             pkg_dirs: Mutex::new(HashMap::new()),
             source_cache: Mutex::new(HashMap::new()),
             file_cache: Mutex::new(HashMap::new()),
@@ -214,11 +230,17 @@ impl World for SimpleWorld {
             return Ok(src);
         }
 
-        let spec = id.package().ok_or_else(|| {
-            FileError::NotFound(id.vpath().as_rootless_path().to_owned())
-        })?;
-        let pkg_dir = self.package_dir(spec)?;
-        let path = pkg_dir.join(id.vpath().as_rootless_path());
+        // Resolve the file path
+        let path = if let Some(spec) = id.package() {
+            let pkg_dir = self.package_dir(spec)?;
+            pkg_dir.join(id.vpath().as_rootless_path())
+        } else {
+            // Local file — resolve against root_dir
+            let root = self.root_dir.as_ref().ok_or_else(|| {
+                FileError::NotFound(id.vpath().as_rootless_path().to_owned())
+            })?;
+            root.join(id.vpath().as_rootless_path())
+        };
 
         let text = std::fs::read_to_string(&path)
             .map_err(|_| FileError::NotFound(path.clone()))?;
@@ -233,11 +255,17 @@ impl World for SimpleWorld {
             return Ok(b);
         }
 
-        let spec = id.package().ok_or_else(|| {
-            FileError::NotFound(id.vpath().as_rootless_path().to_owned())
-        })?;
-        let pkg_dir = self.package_dir(spec)?;
-        let path = pkg_dir.join(id.vpath().as_rootless_path());
+        // Resolve the file path
+        let path = if let Some(spec) = id.package() {
+            let pkg_dir = self.package_dir(spec)?;
+            pkg_dir.join(id.vpath().as_rootless_path())
+        } else {
+            // Local file (e.g. images) — resolve against root_dir
+            let root = self.root_dir.as_ref().ok_or_else(|| {
+                FileError::NotFound(id.vpath().as_rootless_path().to_owned())
+            })?;
+            root.join(id.vpath().as_rootless_path())
+        };
 
         let data = std::fs::read(&path)
             .map_err(|_| FileError::NotFound(path.clone()))?;

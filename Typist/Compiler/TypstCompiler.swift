@@ -19,7 +19,7 @@ final class TypstCompiler {
 
     /// Schedule a compilation 500 ms after the last call.
     /// Cancels any in-flight compile task before scheduling a new one.
-    func compile(source: String) {
+    func compile(source: String, fontPaths: [String]) {
         compileTask?.cancel()
         compileTask = Task { [weak self] in
             guard let self else { return }
@@ -32,7 +32,7 @@ final class TypstCompiler {
             await MainActor.run { self.isCompiling = true }
 
             let result = await Task.detached(priority: .userInitiated) {
-                TypstBridge.compile(source: source)
+                TypstBridge.compile(source: source, fontPaths: fontPaths)
             }.value
 
             await MainActor.run {

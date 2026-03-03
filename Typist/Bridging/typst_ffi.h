@@ -9,6 +9,8 @@ typedef struct {
     size_t              font_path_count;
     /// Directory for caching downloaded @preview packages.
     const char         *cache_dir;
+    /// Root directory for resolving local file references (e.g. images).
+    const char         *root_dir;
 } TypstOptions;
 
 /// Result returned by typst_compile. Free with typst_free_result.

@@ -37,6 +37,7 @@ struct PDFKitView: UIViewRepresentable {
 struct PreviewPane: View {
     @State private var compiler = TypstCompiler()
     var source: String
+    var fontPaths: [String] = []
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -60,7 +61,10 @@ struct PreviewPane: View {
             }
         }
         .onChange(of: source, initial: true) {
-            compiler.compile(source: source)
+            compiler.compile(source: source, fontPaths: fontPaths)
+        }
+        .onChange(of: fontPaths) {
+            compiler.compile(source: source, fontPaths: fontPaths)
         }
         .onDisappear {
             compiler.cancel()

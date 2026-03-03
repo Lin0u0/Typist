@@ -12,11 +12,13 @@ final class TypistDocument {
     var content: String
     var createdAt: Date
     var modifiedAt: Date
+    var fontFileNames: [String] = []
 
     init(title: String = "Untitled", content: String = "") {
         self.title = title
         self.content = content
         self.createdAt = Date()
         self.modifiedAt = Date()
+        self.fontFileNames = []
     }
 }

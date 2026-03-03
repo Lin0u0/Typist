@@ -4,7 +4,6 @@
 //
 
 import Foundation
-import CoreText
 import os.log
 
 enum TypstBridgeError: Error, LocalizedError {
@@ -24,13 +23,15 @@ enum TypstBridgeError: Error, LocalizedError {
 struct TypstBridge {
     /// Compile Typst source to PDF data.
     ///
+    /// - Parameters:
+    ///   - source: Typst markup source string.
+    ///   - fontPaths: File paths to font files (bundled + user-imported).
+    ///
     /// `nonisolated` so it can be called from `Task.detached` without
     /// crossing the MainActor boundary (SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor).
-    nonisolated static func compile(source: String) -> Result<Data, TypstBridgeError> {
+    nonisolated static func compile(source: String, fontPaths: [String], rootDir: String? = nil) -> Result<Data, TypstBridgeError> {
 #if TYPST_FFI_AVAILABLE
-        // Collect system font file paths for CJK support.
-        let fontPaths = cachedSystemFontPaths
-        os_log(.debug, "TypstBridge: passing %d CJK font paths to Rust", fontPaths.count)
+        os_log(.debug, "TypstBridge: passing %d font paths to Rust", fontPaths.count)
         for (i, p) in fontPaths.prefix(5).enumerated() {
             os_log(.debug, "TypstBridge: font[%d] = %{public}@", i, p as NSString)
         }
@@ -44,20 +45,20 @@ struct TypstBridge {
 
         // Hold C strings alive for the duration of the FFI call.
         return source.withCString { cSource in
-            // strdup gives UnsafeMutablePointer<CChar>; cast to const for the struct.
             let mutablePtrs: [UnsafeMutablePointer<CChar>?] = fontPaths.map { strdup($0) }
             defer { mutablePtrs.forEach { free($0) } }
 
             return mutablePtrs.withUnsafeBufferPointer { buf in
-                // Reinterpret [UnsafeMutablePointer<CChar>?] as [UnsafePointer<CChar>?]
                 let constBuf = UnsafeRawBufferPointer(buf)
                     .bindMemory(to: UnsafePointer<CChar>?.self)
 
                 return (cacheDir ?? "").withCString { cCacheDir in
+                  return (rootDir ?? "").withCString { cRootDir in
                     var opts = TypstOptions(
                         font_paths: constBuf.baseAddress,
                         font_path_count: buf.count,
-                        cache_dir: cCacheDir
+                        cache_dir: cCacheDir,
+                        root_dir: rootDir != nil ? cRootDir : nil
                     )
                     let result = typst_compile(cSource, &opts)
                     defer { typst_free_result(result) }
@@ -69,6 +70,7 @@ struct TypstBridge {
                     } else {
                         return .failure(.compilationFailed("Unknown compilation error"))
                     }
+                  }
                 }
             }
         }
@@ -76,35 +78,4 @@ struct TypstBridge {
         return .failure(.compilerNotLinked)
 #endif
     }
-
-    // MARK: - System fonts (CJK support)
-
-    /// Font file paths for CJK-capable system fonts, enumerated once via CoreText.
-    ///
-    /// Bundled typst-assets already provide Latin, Math, and Mono fonts, so we only
-    /// supplement with CJK fonts here. Loading ALL system fonts (~2 GB) would OOM.
-    private static let cjkFamilyPrefixes = [
-        "PingFang", "Heiti", "Songti", "STHeiti", "STSong", "STFangsong",
-        "STKaiti", "Hiragino", "Apple SD", "Noto Sans CJK", "Noto Serif CJK",
-        "Source Han",
-    ]
-
-    private nonisolated static let cachedSystemFontPaths: [String] = {
-        let descriptor = CTFontDescriptorCreateWithAttributes([:] as CFDictionary)
-        guard let matched = CTFontDescriptorCreateMatchingFontDescriptors(descriptor, nil)
-                as? [CTFontDescriptor] else { return [] }
-
-        var seen = Set<URL>()
-        var paths: [String] = []
-        for desc in matched {
-            guard
-                let family = CTFontDescriptorCopyAttribute(desc, kCTFontFamilyNameAttribute) as? String,
-                cjkFamilyPrefixes.contains(where: { family.hasPrefix($0) }),
-                let url = CTFontDescriptorCopyAttribute(desc, kCTFontURLAttribute) as? URL,
-                seen.insert(url).inserted
-            else { continue }
-            paths.append(url.path)
-        }
-        return paths
-    }()
 }
