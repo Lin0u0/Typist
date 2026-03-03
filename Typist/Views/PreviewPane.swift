@@ -38,7 +38,7 @@ struct PDFKitView: UIViewRepresentable {
 // MARK: - PreviewPane
 
 struct PreviewPane: View {
-    @State private var compiler = TypstCompiler()
+    var compiler: TypstCompiler
     var source: String
     var fontPaths: [String] = []
     var rootDir: String?

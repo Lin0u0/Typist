@@ -34,6 +34,9 @@ struct DocumentEditorView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(ThemeManager.self) private var themeManager
 
+    // MARK: - Compiler
+    @State private var compiler = TypstCompiler()
+
     // MARK: - File-based editing state
     @State private var currentFileName: String = ""
     @State private var editorText: String = ""
@@ -42,6 +45,7 @@ struct DocumentEditorView: View {
 
     // MARK: - UI state
     @State private var selectedTab: Int = 0
+    @State private var showingSlideshow = false
     @State private var editorFraction: CGFloat = 0.5
     @State private var showingProjectSettings = false
     @State private var showingPhotoPicker = false
@@ -72,7 +76,7 @@ struct DocumentEditorView: View {
     }
 
     private var previewPane: some View {
-        PreviewPane(source: entrySource, fontPaths: fontPaths, rootDir: rootDir, compileToken: compileToken)
+        PreviewPane(compiler: compiler, source: entrySource, fontPaths: fontPaths, rootDir: rootDir, compileToken: compileToken)
             .background(Color.catppuccinMantle)
     }
 
@@ -146,6 +150,13 @@ struct DocumentEditorView: View {
             Button { showingProjectSettings = true } label: { Label("Project Settings", systemImage: "gearshape") }
             Divider()
             Button { findRequested = true } label: { Label("Find & Replace", systemImage: "magnifyingglass") }
+            Divider()
+            Button {
+                showingSlideshow = true
+            } label: {
+                Label("Slideshow", systemImage: "play.rectangle")
+            }
+            .disabled(compiler.pdfDocument == nil)
         } label: {
             Image(systemName: "ellipsis.circle")
         }
@@ -171,8 +182,12 @@ struct DocumentEditorView: View {
                 Button(action: shareButtonAction) {
                     Image(systemName: "square.and.arrow.up")
                 }
+                .tint(themeManager.colorScheme == .light ? .black : .white)
             }
-            ToolbarItem(placement: .topBarTrailing) { toolbarMenu }
+            ToolbarItem(placement: .topBarTrailing) {
+                toolbarMenu
+                    .tint(themeManager.colorScheme == .light ? .black : .white)
+            }
         }
         .photosPicker(isPresented: $showingPhotoPicker,
                       selection: $selectedPhotoItems,
@@ -190,6 +205,7 @@ struct DocumentEditorView: View {
             ProjectFileManager.migrateContentIfNeeded(for: document)
             loadFile(named: document.entryFileName)
         }
+        .onDisappear { compiler.cancel() }
         .onChange(of: editorText) { _, newText in saveCurrentFile(content: newText) }
         .overlay {
             if isExporting {
@@ -202,6 +218,11 @@ struct DocumentEditorView: View {
             }
         }
         .sheet(item: $exportURL) { url in ActivityView(activityItems: [url]) }
+        .fullScreenCover(isPresented: $showingSlideshow) {
+            if let pdf = compiler.pdfDocument {
+                SlideshowView(document: pdf)
+            }
+        }
         .alert("Export Error", isPresented: Binding(
             get: { exportError != nil },
             set: { if !$0 { exportError = nil } }
