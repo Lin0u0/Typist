@@ -13,6 +13,9 @@ final class TypistDocument {
     var createdAt: Date
     var modifiedAt: Date
     var fontFileNames: [String] = []
+    var projectID: String = UUID().uuidString
+    var imageInsertMode: String = "image"
+    var imageDirectoryName: String = "images"
 
     init(title: String = "Untitled", content: String = "") {
         self.title = title
@@ -20,5 +23,15 @@ final class TypistDocument {
         self.createdAt = Date()
         self.modifiedAt = Date()
         self.fontFileNames = []
+        self.projectID = UUID().uuidString
+    }
+
+    var imageInsertionTemplate: String {
+        switch imageInsertMode {
+        case "figure":
+            return "#figure(image(\"%@\"), caption: [])"
+        default:
+            return "#image(\"%@\")"
+        }
     }
 }

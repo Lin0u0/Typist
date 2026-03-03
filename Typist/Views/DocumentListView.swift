@@ -37,6 +37,7 @@ struct DocumentListView: View {
                         if selectedDocument == document {
                             selectedDocument = nil
                         }
+                        ProjectFileManager.deleteProjectDirectory(for: document)
                         modelContext.delete(document)
                     }
                 }
@@ -82,6 +83,7 @@ struct DocumentListView: View {
             if selectedDocument == doc {
                 selectedDocument = nil
             }
+            ProjectFileManager.deleteProjectDirectory(for: doc)
             modelContext.delete(doc)
         }
     }

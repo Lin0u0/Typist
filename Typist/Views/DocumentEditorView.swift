@@ -5,6 +5,7 @@
 
 import SwiftUI
 import SwiftData
+import PhotosUI
 import UniformTypeIdentifiers
 
 struct DocumentEditorView: View {
@@ -13,18 +14,26 @@ struct DocumentEditorView: View {
     @State private var selectedTab: Int = 0
     @State private var showingFontPicker = false
     @State private var showingFontManager = false
+    @State private var showingProjectSettings = false
+    @State private var showingPhotoPicker = false
+    @State private var selectedPhotoItems: [PhotosPickerItem] = []
+    @State private var insertionRequest: String?
 
     private var fontPaths: [String] {
         FontManager.allFontPaths(for: document)
+    }
+
+    private var rootDir: String {
+        ProjectFileManager.projectDirectory(for: document).path
     }
 
     var body: some View {
         Group {
             if sizeClass == .regular {
                 HStack(spacing: 0) {
-                    EditorView(text: $document.content)
+                    EditorView(text: $document.content, insertionRequest: $insertionRequest)
                     Divider()
-                    PreviewPane(source: document.content, fontPaths: fontPaths)
+                    PreviewPane(source: document.content, fontPaths: fontPaths, rootDir: rootDir)
                 }
             } else {
                 VStack(spacing: 0) {
@@ -37,9 +46,9 @@ struct DocumentEditorView: View {
                     .padding(.vertical, 8)
 
                     if selectedTab == 0 {
-                        EditorView(text: $document.content)
+                        EditorView(text: $document.content, insertionRequest: $insertionRequest)
                     } else {
-                        PreviewPane(source: document.content, fontPaths: fontPaths)
+                        PreviewPane(source: document.content, fontPaths: fontPaths, rootDir: rootDir)
                     }
                 }
             }
@@ -48,12 +57,33 @@ struct DocumentEditorView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showingFontManager = true
+                Menu {
+                    Button {
+                        showingPhotoPicker = true
+                    } label: {
+                        Label("Insert Image", systemImage: "photo")
+                    }
+                    Button {
+                        showingFontManager = true
+                    } label: {
+                        Label("Fonts", systemImage: "textformat")
+                    }
+                    Button {
+                        showingProjectSettings = true
+                    } label: {
+                        Label("Project Settings", systemImage: "gearshape")
+                    }
                 } label: {
-                    Image(systemName: "textformat")
+                    Image(systemName: "ellipsis.circle")
                 }
             }
+        }
+        .photosPicker(isPresented: $showingPhotoPicker,
+                      selection: $selectedPhotoItems,
+                      maxSelectionCount: 1,
+                      matching: .images)
+        .onChange(of: selectedPhotoItems) { _, items in
+            handleImageSelection(items)
         }
         .sheet(isPresented: $showingFontManager) {
             FontManagerSheet(document: document, showingFontPicker: $showingFontPicker)
@@ -65,15 +95,48 @@ struct DocumentEditorView: View {
                     handleFontImport(result)
                 }
         }
+        .sheet(isPresented: $showingProjectSettings) {
+            ProjectSettingsSheet(document: document)
+        }
+        .onAppear {
+            ProjectFileManager.ensureProjectStructure(for: document)
+            FontManager.migrateToProject(for: document)
+        }
         .onChange(of: document.content) {
             document.modifiedAt = Date()
         }
     }
 
+    // MARK: - Image handling
+
+    private func handleImageSelection(_ items: [PhotosPickerItem]) {
+        guard let item = items.first else { return }
+        Task {
+            guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+
+            // Convert through UIImage to ensure JPEG output (Typst doesn't support HEIC)
+            guard let uiImage = UIImage(data: data),
+                  let jpegData = uiImage.jpegData(compressionQuality: 0.85) else { return }
+
+            let fileName = "img-\(UUID().uuidString.prefix(8)).jpg"
+            guard let relativePath = try? ProjectFileManager.saveImage(
+                data: jpegData, fileName: fileName, for: document
+            ) else { return }
+
+            let reference = String(format: document.imageInsertionTemplate, relativePath)
+            await MainActor.run {
+                insertionRequest = reference
+                selectedPhotoItems = []
+            }
+        }
+    }
+
+    // MARK: - Font handling
+
     private func handleFontImport(_ result: Result<[URL], Error>) {
         guard case .success(let urls) = result else { return }
         for url in urls {
-            if let name = try? FontManager.importFont(from: url),
+            if let name = try? FontManager.importFont(from: url, for: document),
                !document.fontFileNames.contains(name) {
                 document.fontFileNames.append(name)
             }
@@ -108,7 +171,7 @@ private struct FontManagerSheet: View {
                             let names = offsets.map { document.fontFileNames[$0] }
                             document.fontFileNames.remove(atOffsets: offsets)
                             for name in names {
-                                FontManager.deleteFont(fileName: name)
+                                FontManager.deleteFont(fileName: name, from: document)
                             }
                         }
                     }

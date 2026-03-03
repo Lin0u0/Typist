@@ -38,6 +38,7 @@ struct PreviewPane: View {
     @State private var compiler = TypstCompiler()
     var source: String
     var fontPaths: [String] = []
+    var rootDir: String?
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -61,10 +62,13 @@ struct PreviewPane: View {
             }
         }
         .onChange(of: source, initial: true) {
-            compiler.compile(source: source, fontPaths: fontPaths)
+            compiler.compile(source: source, fontPaths: fontPaths, rootDir: rootDir)
         }
         .onChange(of: fontPaths) {
-            compiler.compile(source: source, fontPaths: fontPaths)
+            compiler.compile(source: source, fontPaths: fontPaths, rootDir: rootDir)
+        }
+        .onChange(of: rootDir) {
+            compiler.compile(source: source, fontPaths: fontPaths, rootDir: rootDir)
         }
         .onDisappear {
             compiler.cancel()
