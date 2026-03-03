@@ -39,6 +39,7 @@ struct PreviewPane: View {
     var source: String
     var fontPaths: [String] = []
     var rootDir: String?
+    var compileToken: UUID = UUID()
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -68,6 +69,9 @@ struct PreviewPane: View {
             compiler.compile(source: source, fontPaths: fontPaths, rootDir: rootDir)
         }
         .onChange(of: rootDir) {
+            compiler.compile(source: source, fontPaths: fontPaths, rootDir: rootDir)
+        }
+        .onChange(of: compileToken) {
             compiler.compile(source: source, fontPaths: fontPaths, rootDir: rootDir)
         }
         .onDisappear {

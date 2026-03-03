@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-LIBS_DIR="$REPO_ROOT/Typist/Libs"
+LIBS_DIR="$REPO_ROOT/Frameworks"
 mkdir -p "$LIBS_DIR"
 
 # ── Check prerequisites ──────────────────────────────────────────────────────
@@ -20,6 +20,8 @@ rustup target add aarch64-apple-ios-sim
 
 # ── Build ────────────────────────────────────────────────────────────────────
 cd "$SCRIPT_DIR"
+
+export IPHONEOS_DEPLOYMENT_TARGET=17.0
 
 echo "▸ Building for aarch64-apple-ios (device)..."
 cargo build --release --target aarch64-apple-ios

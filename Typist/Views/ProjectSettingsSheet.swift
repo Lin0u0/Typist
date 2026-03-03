@@ -7,11 +7,24 @@ import SwiftUI
 
 struct ProjectSettingsSheet: View {
     @Bindable var document: TypistDocument
+    var openFile: ((String) -> Void)?
     @Environment(\.dismiss) private var dismiss
+    @State private var typFiles: [String] = []
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("Entry File") {
+                    Picker("Entry File", selection: $document.entryFileName) {
+                        ForEach(typFiles, id: \.self) { name in
+                            Text(name).tag(name)
+                        }
+                    }
+                    .onChange(of: document.entryFileName) { _, newName in
+                        openFile?(newName)
+                    }
+                }
+
                 Section("Image Insertion") {
                     Picker("Format", selection: $document.imageInsertMode) {
                         Text("#image(\"path\")").tag("image")
@@ -33,6 +46,12 @@ struct ProjectSettingsSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
+        .onAppear {
+            typFiles = ProjectFileManager.listProjectFiles(for: document).typFiles
+            if typFiles.isEmpty {
+                typFiles = [document.entryFileName]
+            }
+        }
     }
 }

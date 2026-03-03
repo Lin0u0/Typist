@@ -16,6 +16,7 @@ final class TypistDocument {
     var projectID: String = UUID().uuidString
     var imageInsertMode: String = "image"
     var imageDirectoryName: String = "images"
+    var entryFileName: String = "main.typ"
 
     init(title: String = "Untitled", content: String = "") {
         self.title = title

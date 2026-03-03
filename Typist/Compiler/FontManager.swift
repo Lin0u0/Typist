@@ -15,13 +15,6 @@ enum FontManager {
         Bundle.main.path(forResource: "SourceHanSansSC-Regular", ofType: "otf")
     }
 
-    // MARK: - Legacy global directory (for migration only)
-
-    private static var legacyFontsDirectory: URL {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        return docs.appendingPathComponent("Fonts", isDirectory: true)
-    }
-
     // MARK: - Import / Delete (per-project)
 
     /// Copy a font file into the project's fonts directory.
@@ -75,25 +68,4 @@ enum FontManager {
         return paths
     }
 
-    // MARK: - Migration from global Fonts/ to per-project
-
-    /// Migrate fonts listed in document.fontFileNames from the legacy global
-    /// Documents/Fonts/ directory to the per-project fonts/ directory. Idempotent.
-    static func migrateToProject(for document: TypistDocument) {
-        let fm = FileManager.default
-        let legacyDir = legacyFontsDirectory
-        guard fm.fileExists(atPath: legacyDir.path) else { return }
-
-        ProjectFileManager.ensureProjectStructure(for: document)
-        let projectFonts = ProjectFileManager.fontsDirectory(for: document)
-
-        for name in document.fontFileNames {
-            let src = legacyDir.appendingPathComponent(name)
-            let dst = projectFonts.appendingPathComponent(name)
-            guard fm.fileExists(atPath: src.path),
-                  !fm.fileExists(atPath: dst.path) else { continue }
-            try? fm.copyItem(at: src, to: dst)
-            os_log(.info, "FontManager: migrated %{public}@ to project %{public}@", name, document.projectID)
-        }
-    }
 }
