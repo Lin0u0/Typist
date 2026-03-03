@@ -12,10 +12,11 @@ struct ContentView: View {
     @State private var selectedDocument: TypistDocument?
     @State private var themeManager = ThemeManager()
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var searchText: String = ""
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            DocumentListView(selectedDocument: $selectedDocument)
+            DocumentListView(selectedDocument: $selectedDocument, searchText: $searchText)
         } detail: {
             if let document = selectedDocument {
                 DocumentEditorView(document: document, isSidebarVisible: columnVisibility != .detailOnly)

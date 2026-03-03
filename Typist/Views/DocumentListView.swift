@@ -11,25 +11,27 @@ struct DocumentListView: View {
     @Environment(ThemeManager.self) private var themeManager
     @Query(sort: \TypistDocument.createdAt, order: .reverse) private var documents: [TypistDocument]
     @Binding var selectedDocument: TypistDocument?
+    @Binding var searchText: String
     @State private var renamingDocument: TypistDocument?
     @State private var newTitle: String = ""
     @State private var isExporting = false
     @State private var exportError: String?
     @State private var exportURL: URL?
     @State private var documentToDelete: TypistDocument?
-    @State private var searchText: String = ""
+    @State private var showingThemePicker = false
 
     private var filteredDocuments: [TypistDocument] {
         guard !searchText.isEmpty else { return documents }
         return documents.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
     }
 
+    private var isIPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+
     var body: some View {
         documentList
-            .navigationTitle("Typist")
             .searchable(text: $searchText, prompt: "Search documents")
-            .toolbar { toolbarContent }
-            .toolbarBackground(Color.catppuccinMantle, for: .navigationBar)
+            .navigationTitle("Typist")
+            .toolbar { if isIPad { iPadToolbar } else { iPhoneToolbar } }
             .toolbarBackground(.visible, for: .navigationBar)
             .overlay { exportOverlay }
             .sheet(item: $exportURL) { ActivityView(activityItems: [$0]) }
@@ -79,14 +81,6 @@ struct DocumentListView: View {
         List(selection: $selectedDocument) {
             ForEach(filteredDocuments) { document in
                 documentRow(document)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button {
-                            documentToDelete = document
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .tint(.red)
-                    }
             }
         }
         .listStyle(.insetGrouped)
@@ -108,9 +102,11 @@ struct DocumentListView: View {
         }
         .listRowBackground(Color.catppuccinSurface0)
         .contextMenu {
-            Button("Rename") {
+            Button {
                 renamingDocument = document
                 newTitle = document.title
+            } label: {
+                Label("Rename", systemImage: "pencil")
             }
             Divider()
             Button {
@@ -124,43 +120,87 @@ struct DocumentListView: View {
                 Label("Export .typ", systemImage: "doc.text")
             }
             Divider()
-            Button("Delete", role: .destructive) {
+            Button(role: .destructive) {
                 if selectedDocument == document { selectedDocument = nil }
                 ProjectFileManager.deleteProjectDirectory(for: document)
                 modelContext.delete(document)
+            } label: {
+                Label("Delete", systemImage: "trash")
+                    .tint(.red)
             }
         }
     }
 
     @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
+    private var iPadToolbar: some ToolbarContent {
+        ToolbarItem() {
+            Button {
+                showingThemePicker = true
+            } label: {
+                Image(systemName: "paintpalette")
+                    .scaleEffect(0.85)
+            }
+            .tint(themeManager.colorScheme == .light ? .black : .white)
+            .popover(isPresented: $showingThemePicker) { themePickerPopover }
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Button(action: addDocument) {
+                Image(systemName: "folder.badge.plus")
+                    .scaleEffect(0.8)
+            }
+            .tint(themeManager.colorScheme == .light ? .black : .white)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var iPhoneToolbar: some ToolbarContent {
         ToolbarItem(placement: .bottomBar) {
-            Menu {
-                Picker("Theme", selection: Binding(
-                    get: { themeManager.themeID },
-                    set: { id in
-                        guard id != themeManager.themeID else { return }
-                        withTransaction(Transaction(animation: nil)) {
-                            themeManager.themeID = id
-                        }
-                    }
-                )) {
-                    Text("Auto").tag("system")
-                    Text("Mocha · Dark").tag("mocha")
-                    Text("Latte · Light").tag("latte")
-                }
+            Button {
+                showingThemePicker = true
             } label: {
                 Image(systemName: "paintpalette")
             }
+            .tint(themeManager.colorScheme == .light ? .black : nil)
+            .popover(isPresented: $showingThemePicker) { themePickerPopover }
         }
         ToolbarSpacer(.flexible, placement: .bottomBar)
         DefaultToolbarItem(kind: .search, placement: .bottomBar)
         ToolbarSpacer(.flexible, placement: .bottomBar)
         ToolbarItem(placement: .bottomBar) {
-            Button(action: addDocument) {
-                Image(systemName: "plus")
+            Button(action: addDocument) { Image(systemName: "folder.badge.plus") }
+                .tint(themeManager.colorScheme == .light ? .black : nil)
+        }
+    }
+
+    private var themePickerPopover: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach([("system", "Auto"), ("mocha", "Mocha · Dark"), ("latte", "Latte · Light")], id: \.0) { id, label in
+                Button {
+                    guard id != themeManager.themeID else { return }
+                    withTransaction(Transaction(animation: nil)) {
+                        themeManager.themeID = id
+                    }
+                    showingThemePicker = false
+                } label: {
+                    HStack {
+                        Text(label)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        if themeManager.themeID == id {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.tint)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
+                if id != "latte" { Divider() }
             }
         }
+        .frame(minWidth: 200)
+        .presentationCompactAdaptation(.popover)
     }
     
     @ViewBuilder
