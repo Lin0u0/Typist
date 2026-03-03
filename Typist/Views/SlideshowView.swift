@@ -54,12 +54,10 @@ struct SlideshowView: View {
             // ── Top bar ──────────────────────────────────────────────
             HStack {
                 Button { dismiss() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.4), radius: 4)
+                    Image(systemName: "xmark")
+                        .font(.title2.weight(.semibold))
                 }
+                .buttonStyle(.glass)
 
                 Spacer()
 
@@ -84,7 +82,7 @@ struct SlideshowView: View {
 
             // ── Bottom bar ───────────────────────────────────────────
             HStack {
-                navButton(systemImage: "chevron.left.circle.fill", enabled: currentPage > 0) {
+                navButton(systemImage: "chevron.left", enabled: currentPage > 0) {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         currentPage = max(0, currentPage - 1)
                     }
@@ -92,7 +90,7 @@ struct SlideshowView: View {
 
                 Spacer()
 
-                navButton(systemImage: "chevron.right.circle.fill", enabled: currentPage < pageCount - 1) {
+                navButton(systemImage: "chevron.right", enabled: currentPage < pageCount - 1) {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         currentPage = min(pageCount - 1, currentPage + 1)
                     }
@@ -114,13 +112,11 @@ struct SlideshowView: View {
     private func navButton(systemImage: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.title)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.4), radius: 4)
+                .font(.title2.weight(.semibold))
         }
+        .buttonStyle(.glass)
         .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.25)
+        .opacity(enabled ? 1 : 0.3)
     }
 }
 
@@ -148,7 +144,7 @@ struct PDFSlideView: View {
     private func renderPage() async {
         let pageRect = page.bounds(for: .mediaBox)
         // Render at 2× for crisp Retina display.
-        let scale: CGFloat = 2.0
+        let scale: CGFloat = 4.0
         let size = CGSize(width: pageRect.width * scale, height: pageRect.height * scale)
         image = page.thumbnail(of: size, for: .mediaBox)
     }
