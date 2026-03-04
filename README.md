@@ -2,6 +2,10 @@
 
 A native iOS/iPadOS editor for [Typst](https://typst.app/) — the modern typesetting system.
 
+## TestFlight
+
+Join the beta on TestFlight: [https://testflight.apple.com/join/w5jmkR2T](https://testflight.apple.com/join/w5jmkR2T)
+
 <p align="center">
   <img src="https://img.shields.io/badge/iOS%2026%20%26%20iPadOS%2026-blue" alt="Platform">
   <img src="https://img.shields.io/badge/language-Swift%205-orange" alt="Language">

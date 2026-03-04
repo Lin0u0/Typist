@@ -307,6 +307,7 @@ struct DocumentListView: View {
             .padding(8)
             .frame(minWidth: 220)
             .presentationBackground(Color.catppuccinElevated)
+            .presentationCompactAdaptation(.popover)
         }
     }
 
