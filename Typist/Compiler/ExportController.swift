@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import PDFKit
 import Observation
 
 @Observable
@@ -14,8 +15,18 @@ final class ExportController {
     var exportError: String?
     var exportURL: URL?
 
-    func exportPDF(for document: TypistDocument) {
+    /// Export using an already-compiled PDFDocument from the live preview.
+    /// Falls back to a fresh compile if no cached document is provided.
+    func exportPDF(for document: TypistDocument, cachedPDF: PDFDocument? = nil) {
         guard !isExporting else { return }
+
+        // If we have a cached PDF from the preview pane, write it directly — no recompile needed.
+        if let pdf = cachedPDF, let data = pdf.dataRepresentation() {
+            do { exportURL = try ExportManager.temporaryPDFURL(data: data, title: document.title) }
+            catch { exportError = error.localizedDescription }
+            return
+        }
+
         isExporting = true
         Task { @MainActor [weak self] in
             guard let self else { return }

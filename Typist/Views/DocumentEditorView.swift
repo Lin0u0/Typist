@@ -134,7 +134,7 @@ struct DocumentEditorView: View {
 
     /// Context-aware share: PDF on iPad/preview tab, .typ on editor tab.
     private var shareButtonAction: () -> Void {
-        if sizeClass == .regular || selectedTab == 1 { return { exporter.exportPDF(for: document) } }
+        if sizeClass == .regular || selectedTab == 1 { return { exporter.exportPDF(for: document, cachedPDF: compiler.pdfDocument) } }
         return { exporter.exportTypSource(for: document, fileName: currentFileName) }
     }
 

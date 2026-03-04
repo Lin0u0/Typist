@@ -144,9 +144,12 @@ struct PDFSlideView: View {
 
     private func renderPage() async {
         let pageRect = page.bounds(for: .mediaBox)
-        // Render at 4× for crisp Retina display.
+        // Render at 4× for crisp Retina display on a background thread.
         let scale: CGFloat = 4.0
         let size = CGSize(width: pageRect.width * scale, height: pageRect.height * scale)
-        image = page.thumbnail(of: size, for: .mediaBox)
+        let rendered = await Task.detached(priority: .userInitiated) {
+            await page.thumbnail(of: size, for: .mediaBox)
+        }.value
+        image = rendered
     }
 }
