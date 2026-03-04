@@ -9,12 +9,14 @@ enum ZipImporterError: LocalizedError {
     case invalidData
     case decompressionFailed(Int32)
     case unsupportedCompressionMethod(Int)
+    case unsafePath(String)
 
     var errorDescription: String? {
         switch self {
         case .invalidData: return "The ZIP file is invalid or corrupted."
         case .decompressionFailed(let code): return "Decompression failed (zlib error \(code))."
         case .unsupportedCompressionMethod(let m): return "Unsupported compression method \(m)."
+        case .unsafePath(let p): return "ZIP contains an unsafe path: \"\(p)\"."
         }
     }
 }
@@ -32,6 +34,8 @@ struct ZipImporter {
         let bytes = [UInt8](data)
         let count = bytes.count
         guard count >= 22 else { throw ZipImporterError.invalidData }
+        let root = destDir.standardizedFileURL
+        let rootPath = root.path
 
         // 1. Find EOCD (search backwards for PK\x05\x06)
         var eocdOff = count - 22
@@ -96,6 +100,7 @@ struct ZipImporter {
                 relativeName = String(rawName.dropFirst(p.count))
             }
             guard !relativeName.isEmpty else { continue }
+            let safeRelative = try sanitizedRelativePath(relativeName)
 
             // Read local file header to find actual data offset
             let lhOff = entry.localHeaderOffset
@@ -106,7 +111,11 @@ struct ZipImporter {
             let dataEnd    = dataStart + entry.compressedSize
             guard dataEnd <= count else { throw ZipImporterError.invalidData }
 
-            let destURL = destDir.appendingPathComponent(relativeName)
+            let destURL = root.appendingPathComponent(safeRelative).standardizedFileURL
+            let destPath = destURL.path
+            guard destPath == rootPath || destPath.hasPrefix(rootPath + "/") else {
+                throw ZipImporterError.unsafePath(relativeName)
+            }
             let parentDir = destURL.deletingLastPathComponent()
             if !fm.fileExists(atPath: parentDir.path) {
                 try fm.createDirectory(at: parentDir, withIntermediateDirectories: true)
@@ -121,7 +130,7 @@ struct ZipImporter {
             }
 
             try outData.write(to: destURL)
-            extracted.append(relativeName)
+            extracted.append(safeRelative)
         }
 
         return extracted
@@ -148,9 +157,35 @@ struct ZipImporter {
             return name
         })
         guard firstComponents.count == 1, let dir = firstComponents.first else { return nil }
+        guard !dir.isEmpty,
+              dir != ".",
+              dir != "..",
+              !dir.contains("\\") else {
+            return nil
+        }
         let prefix = dir + "/"
         guard relevant.allSatisfy({ $0.hasPrefix(prefix) }) else { return nil }
         return prefix
+    }
+
+    /// Ensure a ZIP entry path is relative and cannot escape destination root.
+    private static func sanitizedRelativePath(_ path: String) throws -> String {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              !trimmed.hasPrefix("/"),
+              !trimmed.contains("\\"),
+              !trimmed.hasPrefix("~") else {
+            throw ZipImporterError.unsafePath(path)
+        }
+
+        let components = trimmed.split(separator: "/", omittingEmptySubsequences: false)
+        guard !components.isEmpty else { throw ZipImporterError.unsafePath(path) }
+        for c in components {
+            if c.isEmpty || c == "." || c == ".." {
+                throw ZipImporterError.unsafePath(path)
+            }
+        }
+        return components.map(String.init).joined(separator: "/")
     }
 
     /// Decompress raw DEFLATE data (no zlib wrapper) using zlib.

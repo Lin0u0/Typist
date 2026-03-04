@@ -67,7 +67,7 @@ struct DocumentEditorView: View {
             theme: themeManager.currentTheme,
             onPhotoTapped: { showingPhotoPicker = true }
         )
-        .background(Color.catppuccinBase)
+        .background(Color.catppuccinMantle)
         .ignoresSafeArea(edges: .bottom)
     }
 
@@ -77,25 +77,29 @@ struct DocumentEditorView: View {
     }
 
     private func splitHandle(totalWidth: CGFloat) -> some View {
-        Capsule()
-            .fill(Color.catppuccinSubtext1)
-            .frame(width: 4, height: 36)
-            .frame(width: 20)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 1, coordinateSpace: .named("splitContainer"))
-                    .onChanged { value in
-                        let raw = value.location.x / totalWidth
-                        withTransaction(Transaction(animation: nil)) {
-                            editorFraction = min(0.8, max(0.2, raw))
-                        }
-                    }
-            )
-            .simultaneousGesture(
-                TapGesture(count: 2).onEnded {
-                    withAnimation(.spring(duration: 0.3)) { editorFraction = 0.5 }
+        let dragGesture = DragGesture(minimumDistance: 1, coordinateSpace: .named("splitContainer"))
+            .onChanged { value in
+                let raw = value.location.x / totalWidth
+                withTransaction(Transaction(animation: nil)) {
+                    editorFraction = min(0.8, max(0.2, raw))
                 }
-            )
+            }
+
+        return Capsule()
+            .fill(Color.catppuccinSubtext1)
+            .frame(width: 2, height: 36)
+            .overlay {
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(width: 28, height: 44)
+                    .contentShape(Rectangle())
+                    .gesture(dragGesture)
+                    .simultaneousGesture(
+                        TapGesture(count: 2).onEnded {
+                            withAnimation(.spring(duration: 0.3)) { editorFraction = 0.5 }
+                        }
+                    )
+            }
     }
 
     @ViewBuilder
@@ -168,11 +172,6 @@ struct DocumentEditorView: View {
 
     var body: some View {
         contentLayout
-        .safeAreaInset(edge: .leading, spacing: 0) {
-            if sizeClass == .regular && isSidebarVisible {
-                Color.catppuccinBase.frame(width: 8)
-            }
-        }
         .navigationTitle(document.title)
         .navigationSubtitleCompat(currentFileName)
         .navigationBarTitleDisplayMode(.inline)

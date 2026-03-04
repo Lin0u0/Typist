@@ -140,7 +140,7 @@ struct PreviewPane: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.catppuccinBase)
+        .background(Color.catppuccinMantle)
     }
 
     private func errorBanner(_ message: String) -> some View {

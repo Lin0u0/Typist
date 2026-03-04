@@ -47,7 +47,7 @@ struct ContentView: View {
                     description: Text("Select a document from the list or create a new one.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.catppuccinBase.ignoresSafeArea())
+                .background(Color.catppuccinMantle.ignoresSafeArea())
             }
         }
         .background(Color.catppuccinMantle.ignoresSafeArea())

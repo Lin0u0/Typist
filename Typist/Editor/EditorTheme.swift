@@ -145,6 +145,11 @@ extension UIColor {
     static let catppuccinBase = UIColor {
         $0.userInterfaceStyle == .dark ? UIColor(hex: "#1E1E2E") : UIColor(hex: "#EFF1F5")
     }
+    /// Elevated container background.
+    /// Light mode uses Mantle (slightly darker than Base); dark mode uses Surface0 (slightly lighter than Base).
+    static let catppuccinElevated = UIColor {
+        $0.userInterfaceStyle == .dark ? UIColor.catppuccinSurface0 : UIColor.catppuccinMantle
+    }
     /// Catppuccin primary text.
     static let catppuccinText = UIColor {
         $0.userInterfaceStyle == .dark ? UIColor(hex: "#CDD6F4") : UIColor(hex: "#4C4F69")
@@ -159,6 +164,7 @@ extension Color {
     static let catppuccinBlue     = Color(UIColor.catppuccinBlue)
     static let catppuccinSubtext1 = Color(UIColor.catppuccinSubtext1)
     static let catppuccinBase     = Color(UIColor.catppuccinBase)
+    static let catppuccinElevated = Color(UIColor.catppuccinElevated)
 }
 
 // MARK: - UIColor hex initializer

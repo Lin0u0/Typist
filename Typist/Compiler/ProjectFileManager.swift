@@ -13,6 +13,7 @@ enum TypistFileError: LocalizedError {
     case fileAlreadyExists(String)
     case fileNotFound(String)
     case invalidFileName(String)
+    case unsafePath(String)
 
     var errorDescription: String? {
         switch self {
@@ -24,6 +25,8 @@ enum TypistFileError: LocalizedError {
             return "File \"\(name)\" not found."
         case .invalidFileName(let name):
             return "Invalid file name: \"\(name)\"."
+        case .unsafePath(let path):
+            return "Unsafe path: \"\(path)\"."
         }
     }
 }
@@ -139,8 +142,9 @@ enum ProjectFileManager {
     }
 
     static func imagesDirectory(for document: TypistDocument) -> URL {
-        projectDirectory(for: document)
-            .appendingPathComponent(document.imageDirectoryName, isDirectory: true)
+        let imageDirName = safeImageDirectoryName(from: document.imageDirectoryName)
+        return projectDirectory(for: document)
+            .appendingPathComponent(imageDirName, isDirectory: true)
     }
 
     static func fontsDirectory(for document: TypistDocument) -> URL {
@@ -193,18 +197,20 @@ enum ProjectFileManager {
     // MARK: - .typ file CRUD
 
     static func readTypFile(named name: String, for document: TypistDocument) throws -> String {
-        let url = typFileURL(named: name, for: document)
+        try validateFileName(name)
+        let url = try validatedProjectPath(relativePath: name, for: document)
         return try String(contentsOf: url, encoding: .utf8)
     }
 
     static func writeTypFile(named name: String, content: String, for document: TypistDocument) throws {
-        let url = typFileURL(named: name, for: document)
+        try validateFileName(name)
+        let url = try validatedProjectPath(relativePath: name, for: document)
         try content.write(to: url, atomically: true, encoding: .utf8)
     }
 
     static func createTypFile(named name: String, for document: TypistDocument) throws {
         try validateFileName(name)
-        let url = typFileURL(named: name, for: document)
+        let url = try validatedProjectPath(relativePath: name, for: document)
         guard !FileManager.default.fileExists(atPath: url.path) else {
             throw TypistFileError.fileAlreadyExists(name)
         }
@@ -217,14 +223,14 @@ enum ProjectFileManager {
             throw TypistFileError.cannotDeleteEntryFile
         }
         try validateFileName(name)
-        let url = typFileURL(named: name, for: document)
+        let url = try validatedProjectPath(relativePath: name, for: document)
         try FileManager.default.removeItem(at: url)
         os_log(.info, "ProjectFileManager: deleted %{public}@ from %{public}@", name, document.projectID)
     }
 
     /// Delete any file by relative path (relative to project root).
     static func deleteProjectFile(relativePath: String, for document: TypistDocument) throws {
-        let url = projectDirectory(for: document).appendingPathComponent(relativePath)
+        let url = try validatedProjectPath(relativePath: relativePath, for: document)
         try FileManager.default.removeItem(at: url)
         os_log(.info, "ProjectFileManager: deleted %{public}@", relativePath)
     }
@@ -237,7 +243,7 @@ enum ProjectFileManager {
         defer { if accessing { sourceURL.stopAccessingSecurityScopedResource() } }
 
         ensureProjectStructure(for: document)
-        let destDir = projectDirectory(for: document).appendingPathComponent(subdir, isDirectory: true)
+        let destDir = try validatedProjectPath(relativePath: subdir, for: document, allowEmpty: true)
         try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
         let fileName = sourceURL.lastPathComponent
         let dest = destDir.appendingPathComponent(fileName)
@@ -246,7 +252,7 @@ enum ProjectFileManager {
         }
         try FileManager.default.copyItem(at: sourceURL, to: dest)
         os_log(.info, "ProjectFileManager: imported %{public}@ into %{public}@/%{public}@", fileName, document.projectID, subdir)
-        return "\(subdir)/\(fileName)"
+        return subdir.isEmpty ? fileName : "\(subdir)/\(fileName)"
     }
 
     // MARK: - File listing
@@ -306,6 +312,53 @@ enum ProjectFileManager {
                document.entryFileName, document.projectID)
     }
 
+    /// Normalize and validate a relative path before resolving it under project root.
+    private static func validatedProjectPath(relativePath: String,
+                                             for document: TypistDocument,
+                                             allowEmpty: Bool = false) throws -> URL {
+        let trimmed = relativePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            if allowEmpty { return projectDirectory(for: document) }
+            throw TypistFileError.invalidFileName(relativePath)
+        }
+        guard !trimmed.hasPrefix("/"),
+              !trimmed.contains("\\"),
+              !trimmed.hasPrefix("~") else {
+            throw TypistFileError.unsafePath(relativePath)
+        }
+
+        let components = trimmed.split(separator: "/", omittingEmptySubsequences: false)
+        guard !components.isEmpty else { throw TypistFileError.unsafePath(relativePath) }
+        for component in components {
+            if component.isEmpty || component == "." || component == ".." {
+                throw TypistFileError.unsafePath(relativePath)
+            }
+        }
+
+        let normalized = components.map(String.init).joined(separator: "/")
+        let root = projectDirectory(for: document).standardizedFileURL
+        let target = root.appendingPathComponent(normalized, isDirectory: false).standardizedFileURL
+        let rootPath = root.path
+        let targetPath = target.path
+        guard targetPath == rootPath || targetPath.hasPrefix(rootPath + "/") else {
+            throw TypistFileError.unsafePath(relativePath)
+        }
+        return target
+    }
+
+    /// Keep image subdirectory as one safe path component to avoid path traversal.
+    private static func safeImageDirectoryName(from raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "images" }
+        guard !trimmed.contains("/"),
+              !trimmed.contains("\\"),
+              trimmed != ".",
+              trimmed != ".." else {
+            return "images"
+        }
+        return String(trimmed.prefix(80))
+    }
+
     // MARK: - Image management
 
     /// Save image data to the project images directory.
@@ -313,9 +366,10 @@ enum ProjectFileManager {
     @discardableResult
     static func saveImage(data: Data, fileName: String, for document: TypistDocument) throws -> String {
         ensureProjectStructure(for: document)
+        let imageDir = safeImageDirectoryName(from: document.imageDirectoryName)
         let dest = imagesDirectory(for: document).appendingPathComponent(fileName)
         try data.write(to: dest)
         os_log(.info, "ProjectFileManager: saved image %{public}@", fileName)
-        return "\(document.imageDirectoryName)/\(fileName)"
+        return "\(imageDir)/\(fileName)"
     }
 }

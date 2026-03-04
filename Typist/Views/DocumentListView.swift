@@ -22,6 +22,7 @@ struct DocumentListView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @State private var monitor = DirectoryMonitor()
+    @State private var syncTask: Task<Void, Never>?
 
     private var filteredDocuments: [TypistDocument] {
         guard !searchText.isEmpty else { return documents }
@@ -91,9 +92,10 @@ struct DocumentListView: View {
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView(onImport: { url in importZip(from: url) })
+                    .preferredColorScheme(themeManager.colorScheme)
             }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { syncWithFilesystem() }
+                if phase == .active { scheduleFilesystemSync(delay: .milliseconds(100)) }
             }
             .alert("Import Error", isPresented: Binding(
                 get: { zipImportError != nil },
@@ -115,15 +117,19 @@ struct DocumentListView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color.catppuccinMantle)
+        .background(Color.catppuccinBase)
         .task {
             ProjectFileManager.migrateLegacyStructure(documents: documents)
             syncWithFilesystem()
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            monitor.onChange = { syncWithFilesystem() }
+            monitor.onChange = { scheduleFilesystemSync() }
             monitor.start(url: docs)
         }
-        .onDisappear { monitor.stop() }
+        .onDisappear {
+            monitor.stop()
+            syncTask?.cancel()
+            syncTask = nil
+        }
     }
 
     private func documentRow(_ document: TypistDocument) -> some View {
@@ -138,7 +144,7 @@ struct DocumentListView: View {
             }
             .padding(.vertical, 2)
         }
-        .listRowBackground(Color.catppuccinSurface0)
+        .listRowBackground(Color.catppuccinElevated)
         .contextMenu {
             Button {
                 renamingDocument = document
@@ -206,6 +212,22 @@ struct DocumentListView: View {
     }
 
     // MARK: - Actions
+
+    /// Coalesce bursty filesystem events into a single sync pass.
+    private func scheduleFilesystemSync(delay: Duration = .milliseconds(300)) {
+        syncTask?.cancel()
+        syncTask = Task {
+            do {
+                try await Task.sleep(for: delay)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                syncWithFilesystem()
+            }
+        }
+    }
 
     private func syncWithFilesystem() {
         let knownIDs = Set(documents.map { $0.projectID })

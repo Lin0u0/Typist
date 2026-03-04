@@ -32,7 +32,7 @@ struct SettingsView: View {
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
-            .background(Color.catppuccinMantle)
+            .background(Color.catppuccinBase)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -58,6 +58,8 @@ struct SettingsView: View {
                 Text(zipImportError ?? "")
             }
         }
+        .id(themeManager.themeID)
+        .preferredColorScheme(themeManager.colorScheme)
     }
 
     // MARK: - Sections
@@ -112,7 +114,7 @@ struct SettingsView: View {
                 Text("Mocha · Dark").tag("mocha")
                 Text("Latte · Light").tag("latte")
             }
-            .listRowBackground(Color.catppuccinSurface0)
+            .listRowBackground(Color.catppuccinElevated)
         }
     }
 
@@ -124,7 +126,7 @@ struct SettingsView: View {
                 Label("Import ZIP", systemImage: "square.and.arrow.down")
                     .foregroundStyle(.primary)
             }
-            .listRowBackground(Color.catppuccinSurface0)
+            .listRowBackground(Color.catppuccinElevated)
         }
     }
 
@@ -135,7 +137,7 @@ struct SettingsView: View {
             } label: {
                 Text("Acknowledgements")
             }
-            .listRowBackground(Color.catppuccinSurface0)
+            .listRowBackground(Color.catppuccinElevated)
         }
     }
 }
@@ -152,19 +154,19 @@ private struct AcknowledgementsView: View {
                     license: "Apache 2.0",
                     url: "https://typst.app"
                 )
-                .listRowBackground(Color.catppuccinSurface0)
+                .listRowBackground(Color.catppuccinElevated)
                 creditRow(
                     name: "Catppuccin",
                     detail: "Soothing pastel color palette powering the editor themes.",
                     license: "MIT",
                     url: "https://github.com/catppuccin/catppuccin"
                 )
-                .listRowBackground(Color.catppuccinSurface0)
+                .listRowBackground(Color.catppuccinElevated)
             }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color.catppuccinMantle)
+        .background(Color.catppuccinBase)
         .navigationTitle("Acknowledgements")
         .navigationBarTitleDisplayMode(.inline)
     }

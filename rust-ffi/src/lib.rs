@@ -3,7 +3,7 @@ use std::ffi::{CStr, CString};
 use std::io::Read;
 use std::os::raw::c_char;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use typst::diag::{FileError, FileResult, PackageError, SourceDiagnostic};
 use typst::foundations::{Bytes, Datetime};
@@ -14,6 +14,11 @@ use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
 use typst::{Library, LibraryExt, World};
 use typst_pdf::{PdfOptions, pdf};
+
+const EXTRA_FONT_CACHE_LIMIT: usize = 16;
+
+static BUNDLED_FONT_FACES: OnceLock<Arc<Vec<Font>>> = OnceLock::new();
+static EXTRA_FONT_FACES_CACHE: OnceLock<Mutex<HashMap<String, Arc<Vec<Font>>>>> = OnceLock::new();
 
 // ---------------------------------------------------------------------------
 // C FFI — options struct
@@ -61,15 +66,14 @@ impl SimpleWorld {
     /// # Safety
     /// `options` must be null or point to a valid `TypstOptions`.
     unsafe fn new(source_text: &str, options: *const TypstOptions) -> Self {
-        let mut fonts: Vec<Font> = Vec::new();
+        let bundled_faces = bundled_font_faces();
+        let mut fonts: Vec<Font> = Vec::with_capacity(bundled_faces.len());
         let mut book = FontBook::new();
 
-        // --- Bundled fonts (Latin, Math, Mono) ---
-        for data in typst_assets::fonts() {
-            for font in Font::iter(Bytes::new(data)) {
-                book.push(font.info().clone());
-                fonts.push(font);
-            }
+        // --- Bundled fonts (Latin, Math, Mono), parsed once then cloned ---
+        for font in bundled_faces.iter().cloned() {
+            book.push(font.info().clone());
+            fonts.push(font);
         }
 
         let bundled_count = fonts.len();
@@ -77,40 +81,25 @@ impl SimpleWorld {
 
         let mut pkg_cache_root: Option<PathBuf> = None;
         let mut root_dir: Option<PathBuf> = None;
+        let mut font_paths: Vec<String> = Vec::new();
 
         if !options.is_null() {
             let opts = &*options;
 
             eprintln!("[typst-ffi] font_path_count from Swift: {}", opts.font_path_count);
 
-            // --- Extra font paths (system CJK fonts from Swift/CoreText) ---
-            let mut loaded = 0usize;
-            let mut failed = 0usize;
+            // Gather extra font paths from Swift.
             for i in 0..opts.font_path_count {
                 let ptr = *opts.font_paths.add(i);
                 if ptr.is_null() {
                     continue;
                 }
                 let path = match CStr::from_ptr(ptr).to_str() {
-                    Ok(s) => s,
+                    Ok(s) => s.to_string(),
                     Err(_) => continue,
                 };
-                match std::fs::read(path) {
-                    Ok(data) => {
-                        let before = fonts.len();
-                        for font in Font::iter(Bytes::new(data)) {
-                            book.push(font.info().clone());
-                            fonts.push(font);
-                        }
-                        loaded += fonts.len() - before;
-                    }
-                    Err(e) => {
-                        eprintln!("[typst-ffi] FAILED to read font: {} — {}", path, e);
-                        failed += 1;
-                    }
-                }
+                font_paths.push(path);
             }
-            eprintln!("[typst-ffi] loaded {} extra font faces ({} files failed)", loaded, failed);
 
             // --- Package cache directory ---
             if !opts.cache_dir.is_null() {
@@ -128,6 +117,20 @@ impl SimpleWorld {
                     }
                 }
             }
+        }
+
+        // --- Extra font paths (system CJK fonts from Swift/CoreText) ---
+        if !font_paths.is_empty() {
+            let extra_faces = extra_font_faces(&font_paths);
+            for font in extra_faces.iter().cloned() {
+                book.push(font.info().clone());
+                fonts.push(font);
+            }
+            eprintln!(
+                "[typst-ffi] loaded {} extra font faces (cache key paths: {})",
+                extra_faces.len(),
+                font_paths.len()
+            );
         }
 
         let main_id = FileId::new(None, VirtualPath::new("main.typ"));
@@ -183,6 +186,61 @@ impl SimpleWorld {
         self.pkg_dirs.lock().unwrap().insert(key, result.clone());
         result.map_err(|_| FileError::Package(PackageError::NotFound(spec.clone())))
     }
+}
+
+fn bundled_font_faces() -> Arc<Vec<Font>> {
+    BUNDLED_FONT_FACES
+        .get_or_init(|| {
+            let mut faces = Vec::new();
+            for data in typst_assets::fonts() {
+                for font in Font::iter(Bytes::new(data)) {
+                    faces.push(font);
+                }
+            }
+            Arc::new(faces)
+        })
+        .clone()
+}
+
+fn extra_font_faces(paths: &[String]) -> Arc<Vec<Font>> {
+    let key = paths.join("\u{1F}");
+    let cache = EXTRA_FONT_FACES_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+
+    {
+        let guard = cache.lock().unwrap();
+        if let Some(cached) = guard.get(&key) {
+            return cached.clone();
+        }
+    }
+
+    let mut faces: Vec<Font> = Vec::new();
+    let mut failed = 0usize;
+    for path in paths {
+        match std::fs::read(path) {
+            Ok(data) => {
+                for font in Font::iter(Bytes::new(data)) {
+                    faces.push(font);
+                }
+            }
+            Err(e) => {
+                eprintln!("[typst-ffi] FAILED to read font: {} — {}", path, e);
+                failed += 1;
+            }
+        }
+    }
+    eprintln!(
+        "[typst-ffi] extra font cache miss: {} faces, {} files failed",
+        faces.len(),
+        failed
+    );
+
+    let faces = Arc::new(faces);
+    let mut guard = cache.lock().unwrap();
+    if guard.len() >= EXTRA_FONT_CACHE_LIMIT {
+        guard.clear();
+    }
+    guard.insert(key, faces.clone());
+    faces
 }
 
 /// Download a `.tar.gz` from `url` and extract it into `dest`.
