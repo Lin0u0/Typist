@@ -5,6 +5,7 @@
 
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct DocumentListView: View {
     @Environment(\.modelContext) private var modelContext
@@ -18,6 +19,10 @@ struct DocumentListView: View {
     @State private var exporter = ExportController()
     @State private var documentToDelete: TypistDocument?
     @State private var showingThemePicker = false
+    @State private var showingZipImporter = false
+    @State private var zipImportError: String? = nil
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var monitor = DirectoryMonitor()
 
     private var filteredDocuments: [TypistDocument] {
         guard !searchText.isEmpty else { return documents }
@@ -57,8 +62,12 @@ struct DocumentListView: View {
             )) {
                 TextField("Title", text: $newTitle)
                 Button("Rename") {
-                    renamingDocument?.title = newTitle
-                    renamingDocument?.modifiedAt = Date()
+                    if let doc = renamingDocument {
+                        let newFolderName = ProjectFileManager.renameProjectDirectory(for: doc, to: newTitle)
+                        doc.projectID = newFolderName
+                        doc.title = newTitle
+                        doc.modifiedAt = Date()
+                    }
                     renamingDocument = nil
                 }
                 Button("Cancel", role: .cancel) { renamingDocument = nil }
@@ -81,6 +90,23 @@ struct DocumentListView: View {
                     Text("\"\(doc.title)\" will be permanently deleted.")
                 }
             }
+            .fileImporter(isPresented: $showingZipImporter, allowedContentTypes: [.zip]) { result in
+                switch result {
+                case .success(let url): importZip(from: url)
+                case .failure(let error): zipImportError = error.localizedDescription
+                }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { syncWithFilesystem() }
+            }
+            .alert("Import Error", isPresented: Binding(
+                get: { zipImportError != nil },
+                set: { if !$0 { zipImportError = nil } }
+            )) {
+                Button("OK") { zipImportError = nil }
+            } message: {
+                Text(zipImportError ?? "")
+            }
     }
 
     // MARK: - Subviews
@@ -94,6 +120,14 @@ struct DocumentListView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Color.catppuccinMantle)
+        .task {
+            ProjectFileManager.migrateLegacyStructure(documents: documents)
+            syncWithFilesystem()
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            monitor.onChange = { syncWithFilesystem() }
+            monitor.start(url: docs)
+        }
+        .onDisappear { monitor.stop() }
     }
 
     private func documentRow(_ document: TypistDocument) -> some View {
@@ -149,6 +183,13 @@ struct DocumentListView: View {
             .popover(isPresented: $showingThemePicker) { themePickerPopover }
         }
         ToolbarItem(placement: .primaryAction) {
+            Button { showingZipImporter = true } label: {
+                Image(systemName: "square.and.arrow.down")
+                    .scaleEffect(0.8)
+            }
+            .tint(themeManager.colorScheme == .light ? .black : .white)
+        }
+        ToolbarItem(placement: .primaryAction) {
             Button(action: addDocument) {
                 Image(systemName: "folder.badge.plus")
                     .scaleEffect(0.8)
@@ -171,6 +212,12 @@ struct DocumentListView: View {
         ToolbarSpacer(.flexible, placement: .bottomBar)
         DefaultToolbarItem(kind: .search, placement: .bottomBar)
         ToolbarSpacer(.flexible, placement: .bottomBar)
+        ToolbarItem(placement: .bottomBar) {
+            Button { showingZipImporter = true } label: {
+                Image(systemName: "square.and.arrow.down")
+            }
+            .tint(themeManager.colorScheme == .light ? .black : nil)
+        }
         ToolbarItem(placement: .bottomBar) {
             Button(action: addDocument) { Image(systemName: "folder.badge.plus") }
                 .tint(themeManager.colorScheme == .light ? .black : nil)
@@ -210,11 +257,62 @@ struct DocumentListView: View {
 
     // MARK: - Actions
 
+    private func syncWithFilesystem() {
+        let knownIDs = Set(documents.map { $0.projectID })
+        let newFolders = ProjectFileManager.untrackedFolderNames(knownProjectIDs: knownIDs)
+        for folderName in newFolders {
+            let folderURL = ProjectFileManager.projectDirectory(folderName: folderName)
+            let typFiles = (try? FileManager.default.contentsOfDirectory(atPath: folderURL.path))?
+                .filter { $0.hasSuffix(".typ") }.sorted() ?? []
+            let entryFile = typFiles.first(where: { $0 == "main.typ" }) ?? typFiles.first ?? "main.typ"
+            let doc = TypistDocument(title: folderName, content: "")
+            doc.projectID = folderName
+            doc.entryFileName = entryFile
+            modelContext.insert(doc)
+        }
+    }
+
+    private func nextAvailableTitle() -> String {
+        let titles = Set(documents.map { $0.title })
+        if !titles.contains("Untitled") { return "Untitled" }
+        var i = 1
+        while titles.contains("Untitled \(i)") { i += 1 }
+        return "Untitled \(i)"
+    }
+
     private func addDocument() {
-        let doc = TypistDocument(title: "Untitled", content: "")
+        let title = nextAvailableTitle()
+        let doc = TypistDocument(title: title, content: "")
+        doc.projectID = ProjectFileManager.uniqueFolderName(for: title)
         modelContext.insert(doc)
         ProjectFileManager.ensureProjectStructure(for: doc)
         try? ProjectFileManager.writeTypFile(named: "main.typ", content: "", for: doc)
         selectedDocument = doc
+    }
+
+    private func importZip(from url: URL) {
+        let title = url.deletingPathExtension().lastPathComponent
+        let doc = TypistDocument(title: title, content: "")
+        doc.projectID = ProjectFileManager.uniqueFolderName(for: title)
+        modelContext.insert(doc)
+        ProjectFileManager.ensureProjectStructure(for: doc)
+        let destDir = ProjectFileManager.projectDirectory(for: doc)
+
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+
+        do {
+            let extracted = try ZipImporter.extract(from: url, to: destDir)
+            // Detect entry file: prefer main.typ, else first .typ file
+            let typFiles = extracted.filter { $0.hasSuffix(".typ") && !$0.contains("/") }
+            if let entry = typFiles.first(where: { $0 == "main.typ" }) ?? typFiles.first {
+                doc.entryFileName = entry
+            }
+            selectedDocument = doc
+        } catch {
+            modelContext.delete(doc)
+            ProjectFileManager.deleteProjectDirectory(for: doc)
+            zipImportError = error.localizedDescription
+        }
     }
 }

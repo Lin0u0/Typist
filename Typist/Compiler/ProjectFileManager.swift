@@ -42,15 +42,100 @@ enum ProjectFileManager {
 
     // MARK: - Directory layout
 
-    private static var projectsRoot: URL {
+    private static var documentsURL: URL {
         guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
             fatalError("DocumentDirectory unavailable — this should never happen in a sandboxed app")
         }
-        return docs.appendingPathComponent("Projects", isDirectory: true)
+        return docs
     }
 
     static func projectDirectory(for document: TypistDocument) -> URL {
-        projectsRoot.appendingPathComponent(document.projectID, isDirectory: true)
+        documentsURL.appendingPathComponent(document.projectID, isDirectory: true)
+    }
+
+    static func projectDirectory(folderName: String) -> URL {
+        documentsURL.appendingPathComponent(folderName, isDirectory: true)
+    }
+
+    // MARK: - Folder naming
+
+    /// Convert a project title into a safe directory name.
+    static func sanitizeFolderName(_ title: String) -> String {
+        var name = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let unsafe = CharacterSet(charactersIn: "/:\\*?\"<>|")
+        name = name.components(separatedBy: unsafe).joined(separator: "-")
+        name = name.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        if name.isEmpty { name = "Untitled" }
+        return String(name.prefix(200))
+    }
+
+    /// Return a folder name that doesn't already exist under Documents/.
+    static func uniqueFolderName(for title: String) -> String {
+        let fm = FileManager.default
+        let base = sanitizeFolderName(title)
+        if !fm.fileExists(atPath: documentsURL.appendingPathComponent(base).path) { return base }
+        var i = 2
+        while fm.fileExists(atPath: documentsURL.appendingPathComponent("\(base) \(i)").path) { i += 1 }
+        return "\(base) \(i)"
+    }
+
+    // MARK: - Rename
+
+    /// Move the project folder to a new title-derived name. Returns the new projectID.
+    @discardableResult
+    static func renameProjectDirectory(for document: TypistDocument, to newTitle: String) -> String {
+        let newFolderName = uniqueFolderName(for: newTitle)
+        let oldDir = projectDirectory(for: document)
+        let newDir = documentsURL.appendingPathComponent(newFolderName, isDirectory: true)
+        if FileManager.default.fileExists(atPath: oldDir.path) {
+            try? FileManager.default.moveItem(at: oldDir, to: newDir)
+        }
+        return newFolderName
+    }
+
+    // MARK: - Filesystem sync
+
+    /// Scan Documents/ and return folder names not yet tracked in the store.
+    static func untrackedFolderNames(knownProjectIDs: Set<String>) -> [String] {
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: documentsURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: .skipsHiddenFiles
+        ) else { return [] }
+
+        return contents.compactMap { url -> String? in
+            guard (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { return nil }
+            let name = url.lastPathComponent
+            return knownProjectIDs.contains(name) ? nil : name
+        }.sorted()
+    }
+
+    // MARK: - Legacy migration
+
+    /// One-time migration: moves Documents/Projects/<UUID>/ → Documents/<title>/ for each document
+    /// whose projectID is still a UUID string.
+    static func migrateLegacyStructure(documents: [TypistDocument]) {
+        let fm = FileManager.default
+        let legacyRoot = documentsURL.appendingPathComponent("Projects", isDirectory: true)
+        // Quick bail-out if there is nothing from the old layout
+        guard fm.fileExists(atPath: legacyRoot.path) else { return }
+
+        for doc in documents {
+            guard UUID(uuidString: doc.projectID) != nil else { continue }
+            let oldDir = legacyRoot.appendingPathComponent(doc.projectID, isDirectory: true)
+            let newFolderName = uniqueFolderName(for: doc.title)
+            let newDir = documentsURL.appendingPathComponent(newFolderName, isDirectory: true)
+            if fm.fileExists(atPath: oldDir.path) {
+                try? fm.moveItem(at: oldDir, to: newDir)
+            }
+            doc.projectID = newFolderName
+            os_log(.info, "ProjectFileManager: migrated %{public}@ → %{public}@", doc.title, newFolderName)
+        }
+
+        // Remove the now-empty Projects/ directory
+        if let items = try? fm.contentsOfDirectory(atPath: legacyRoot.path), items.isEmpty {
+            try? fm.removeItem(at: legacyRoot)
+        }
     }
 
     static func imagesDirectory(for document: TypistDocument) -> URL {

@@ -34,9 +34,22 @@
 		466C5F012F55A6BD00C56B99 /* typst_ios.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = typst_ios.xcframework; path = Frameworks/typst_ios.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		46F18E3A2F57FA690014A5EA /* Exceptions for "Typist" folder in "Typist" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 466C5E542F55A6BC00C56B99 /* Typist */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		466C5E572F55A6BC00C56B99 /* Typist */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				46F18E3A2F57FA690014A5EA /* Exceptions for "Typist" folder in "Typist" target */,
+			);
 			path = Typist;
 			sourceTree = "<group>";
 		};
@@ -415,6 +428,9 @@
 				DEVELOPMENT_TEAM = XYE2F8GRHU;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Typist/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -462,6 +478,9 @@
 				DEVELOPMENT_TEAM = XYE2F8GRHU;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Typist/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
