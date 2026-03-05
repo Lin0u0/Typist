@@ -46,6 +46,9 @@ Join the beta on TestFlight: [https://testflight.apple.com/join/w5jmkR2T](https:
    ./build-ios.sh
    cd ..
    ```
+   Notes:
+   - The static libraries inside `Frameworks/typst_ios.xcframework` (`*.a`) are generated artifacts and are ignored by git.
+   - Re-run `rust-ffi/build-ios.sh` whenever Typst/Rust FFI changes and before local release builds.
 
 3. Open the project in Xcode:
    ```bash

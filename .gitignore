@@ -33,10 +33,8 @@ Cargo.lock
 !Cargo.lock  # Keep Cargo.lock for binary crates, remove this line if it's a library
 *.rs.bk
 
-# Static libraries (should be built from source)
-# Note: Frameworks/typst_ios.xcframework contains prebuilt libs
-# If you want to exclude them, uncomment below:
-# *.a
+# Static libraries generated in Frameworks (build from source locally)
+Frameworks/**/*.a
 
 # IDE
 .idea/
