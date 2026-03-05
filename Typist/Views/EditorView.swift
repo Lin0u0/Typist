@@ -11,6 +11,8 @@ struct EditorView: UIViewRepresentable {
     @Binding var findRequested: Bool
     var theme: EditorTheme = .system
     var onPhotoTapped: () -> Void = {}
+    var onImagePasted: (Data) -> Void = { _ in }
+    var onRichPaste: ([TypstTextView.PasteFragment]) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -27,6 +29,8 @@ struct EditorView: UIViewRepresentable {
     func updateUIView(_ textView: TypstTextView, context: Context) {
         textView.applyTheme(theme)
         textView.onPhotoButtonTapped = onPhotoTapped
+        textView.onImagePasted = onImagePasted
+        textView.onRichPaste = onRichPaste
 
         // Consume pending find request — defer mutation to avoid writing state during view update.
         if findRequested {
@@ -40,8 +44,9 @@ struct EditorView: UIViewRepresentable {
         if let insertion = insertionRequest {
             let coordinator = context.coordinator
             Task { @MainActor in
-                coordinator.insertText(insertion)
+                guard self.insertionRequest == insertion else { return }
                 self.insertionRequest = nil
+                coordinator.insertText(insertion)
             }
             return
         }
@@ -63,9 +68,21 @@ struct EditorView: UIViewRepresentable {
 
         func insertText(_ text: String) {
             guard let textView else { return }
-            let range = textView.selectedRange
-            textView.textStorage.replaceCharacters(in: range, with: text)
-            textView.selectedRange = NSRange(location: range.location + text.count, length: 0)
+            let selectedRange = textView.selectedRange
+            let nsString = textView.text as NSString
+            let originalContent = nsString.substring(with: selectedRange)
+            let insertedRange = NSRange(location: selectedRange.location, length: (text as NSString).length)
+
+            textView.undoManager?.registerUndo(withTarget: textView) { tv in
+                tv.textStorage.replaceCharacters(in: insertedRange, with: originalContent)
+                tv.selectedRange = selectedRange
+                (tv as? TypstTextView)?.applyHighlighting()
+                tv.delegate?.textViewDidChange?(tv)
+            }
+            textView.undoManager?.setActionName("Insert Image")
+
+            textView.textStorage.replaceCharacters(in: selectedRange, with: text)
+            textView.selectedRange = NSRange(location: selectedRange.location + insertedRange.length, length: 0)
             textView.applyHighlighting()
             parent.text = textView.text
         }
