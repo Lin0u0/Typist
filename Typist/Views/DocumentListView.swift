@@ -65,6 +65,7 @@ struct DocumentListView: View {
     @State private var syncTask: Task<Void, Never>?
     @State private var sortField: SortField = .modifiedAt
     @State private var sortDirection: SortDirection = .descending
+    @State private var showingSortPopover = false
     private let rowDateFormat = Date.FormatStyle(date: .abbreviated, time: .shortened)
 
     private var filteredDocuments: [TypistDocument] {
@@ -322,18 +323,8 @@ struct DocumentListView: View {
     }
 
     private var sortMenu: some View {
-        Menu {
-            Picker(L10n.tr("sort.menu.sort_by"), selection: $sortField) {
-                ForEach(SortField.allCases) { field in
-                    Text(field.label).tag(field)
-                }
-            }
-
-            Picker(L10n.tr("sort.menu.order"), selection: $sortDirection) {
-                ForEach(SortDirection.allCases) { direction in
-                    Text(direction.label).tag(direction)
-                }
-            }
+        Button {
+            showingSortPopover = true
         } label: {
             Image(systemName: "arrow.up.arrow.down")
                 .scaleEffect(0.8)
@@ -342,6 +333,78 @@ struct DocumentListView: View {
         .tint(toolbarButtonTint)
         .accessibilityLabel(L10n.tr("sort.menu.button"))
         .accessibilityValue("\(sortField.label), \(sortDirection.label)")
+        .popover(
+            isPresented: $showingSortPopover,
+            attachmentAnchor: .point(.bottom),
+            arrowEdge: .top
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                sortSection(title: L10n.tr("sort.menu.sort_by")) {
+                    ForEach(SortField.allCases) { field in
+                        sortSelectionRow(
+                            title: field.label,
+                            isSelected: field == sortField
+                        ) {
+                            sortField = field
+                        }
+                    }
+                }
+
+                Divider()
+
+                sortSection(title: L10n.tr("sort.menu.order")) {
+                    ForEach(SortDirection.allCases) { direction in
+                        sortSelectionRow(
+                            title: direction.label,
+                            isSelected: direction == sortDirection
+                        ) {
+                            sortDirection = direction
+                        }
+                    }
+                }
+            }
+            .padding(12)
+            .frame(width: 240)
+            .catppuccinFloatingSurface(cornerRadius: 16)
+            .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    @ViewBuilder
+    private func sortSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.catppuccinSubtext1)
+                .textCase(.uppercase)
+
+            content()
+        }
+    }
+
+    private func sortSelectionRow(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            action()
+            showingSortPopover = false
+        } label: {
+            HStack(spacing: 12) {
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.primary)
+
+                Spacer(minLength: 12)
+
+                Image(systemName: "checkmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.primary)
+                    .opacity(isSelected ? 1 : 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Actions
