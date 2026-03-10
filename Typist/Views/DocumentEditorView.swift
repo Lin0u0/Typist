@@ -41,6 +41,7 @@ struct DocumentEditorView: View {
 
     @Bindable var document: TypistDocument
     var isSidebarVisible: Bool = false
+    @Environment(AppFontLibrary.self) private var appFontLibrary
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(ThemeManager.self) private var themeManager
 
@@ -75,6 +76,7 @@ struct DocumentEditorView: View {
     @State private var imageImportToast: String?
     @State private var toastDismissTask: Task<Void, Never>?
     @State private var showingImportConfiguration = false
+    @State private var showingZipExportWarning = false
     @State private var focusCoordinator = EditorFocusCoordinator()
 
     private var fontPaths: [String] { FontManager.allFontPaths(for: document) }
@@ -226,8 +228,7 @@ struct DocumentEditorView: View {
             Button { findRequested = true } label: { Label(L10n.tr("action.find_replace"), systemImage: "magnifyingglass") }
             Divider()
             Button {
-                flushPendingSave()
-                exporter.exportZip(for: document)
+                triggerZipExport()
             } label: {
                 Label("Export Project as Zip", systemImage: "archivebox")
             }
@@ -356,6 +357,15 @@ struct DocumentEditorView: View {
                 Button("OK") { exporter.exportError = nil }
             } message: {
                 Text(exporter.exportError ?? "")
+            }
+            .alert("App Fonts Not Included", isPresented: $showingZipExportWarning) {
+                Button("Cancel", role: .cancel) {}
+                Button("Continue") {
+                    flushPendingSave()
+                    exporter.exportZip(for: document)
+                }
+            } message: {
+                Text("Project ZIP exports only the project directory. Imported App fonts are not bundled and must exist separately on the destination device.")
             }
             .alert("Image Import Error", isPresented: Binding(
                 get: { imageImportError != nil },
@@ -562,6 +572,15 @@ struct DocumentEditorView: View {
                     previewActionError = error.localizedDescription
                 }
             }
+        }
+    }
+
+    private func triggerZipExport() {
+        if appFontLibrary.isEmpty {
+            flushPendingSave()
+            exporter.exportZip(for: document)
+        } else {
+            showingZipExportWarning = true
         }
     }
 

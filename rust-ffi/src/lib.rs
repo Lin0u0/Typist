@@ -9,7 +9,7 @@ use typst::diag::{FileError, FileResult, PackageError, SourceDiagnostic};
 use typst::foundations::{Bytes, Datetime};
 use typst::layout::PagedDocument;
 use typst::syntax::package::PackageSpec;
-use typst::syntax::{FileId, Source, VirtualPath};
+use typst::syntax::{FileId, Source, Span, VirtualPath};
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
 use typst::{Library, LibraryExt, World};
@@ -185,6 +185,27 @@ impl SimpleWorld {
 
         self.pkg_dirs.lock().unwrap().insert(key, result.clone());
         result.map_err(|_| FileError::Package(PackageError::NotFound(spec.clone())))
+    }
+
+    fn format_span_location(&self, span: Span) -> Option<String> {
+        let id = span.id()?;
+        let source = self.source(id).ok()?;
+        let range = source.range(span).or_else(|| span.range())?;
+        let (line, column) = source.lines().byte_to_line_column(range.start)?;
+        Some(format!(
+            "{}:{}:{}",
+            self.display_file_label(id),
+            line + 1,
+            column + 1
+        ))
+    }
+
+    fn display_file_label(&self, id: FileId) -> String {
+        if let Some(package) = id.package() {
+            format!("{package}{}", id.vpath().as_rooted_path().display())
+        } else {
+            id.vpath().as_rootless_path().display().to_string()
+        }
     }
 }
 
@@ -498,9 +519,9 @@ pub unsafe extern "C" fn typst_compile(
                     success: true,
                 }
             }
-            Err(e) => error_result(&format_diagnostics(&e)),
+            Err(e) => error_result(&format_diagnostics(&world, &e)),
         },
-        Err(e) => error_result(&format_diagnostics(&e)),
+        Err(e) => error_result(&format_diagnostics(&world, &e)),
     }
 }
 
@@ -544,12 +565,24 @@ fn error_result(msg: &str) -> TypstResult {
     }
 }
 
-fn format_diagnostics(diags: &[SourceDiagnostic]) -> String {
+fn format_diagnostics(world: &SimpleWorld, diags: &[SourceDiagnostic]) -> String {
     diags
         .iter()
-        .map(|d| d.message.to_string())
+        .map(|diag| format_diagnostic(world, diag))
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n\n")
+}
+
+fn format_diagnostic(world: &SimpleWorld, diag: &SourceDiagnostic) -> String {
+    let mut lines = vec![diag.message.to_string()];
+
+    if let Some(location) = world.format_span_location(diag.span) {
+        lines.push(format!("({location})"));
+    }
+
+    lines.extend(diag.hints.iter().map(|hint| format!("Hint: {hint}")));
+
+    lines.join("\n")
 }
 
 #[cfg(test)]
@@ -591,6 +624,17 @@ mod tests {
 
         assert!(error.contains("unsupported link entries"));
         let _ = std::fs::remove_dir_all(dest);
+    }
+
+    #[test]
+    fn format_diagnostics_includes_source_location() {
+        let world = unsafe { SimpleWorld::new("= broken", std::ptr::null()) };
+        let span = Span::from_range(world.main(), 0..1);
+        let rendered =
+            format_diagnostics(&world, &[SourceDiagnostic::error(span, "unexpected token")]);
+
+        assert!(rendered.contains("unexpected token"));
+        assert!(rendered.contains("(main.typ:1:1)"));
     }
 
     #[derive(Clone)]

@@ -129,4 +129,6 @@
 "Reference implementation for Swift/Rust interop." = "Swift/Rust 互操作方案的参考实现。";
 "Thanks to everyone at Donut for support and inspiration." = "感谢甜甜圈的所有伙伴给予的支持与启发。";
 "Compilation Error" = "编译错误";
+"Show Details" = "显示详情";
+"Hide Details" = "收起详情";
 "Start typing to see a live preview" = "开始输入以查看实时预览";

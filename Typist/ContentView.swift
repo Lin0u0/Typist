@@ -30,6 +30,7 @@ private struct SceneTitleSetter: UIViewRepresentable {
 struct ContentView: View {
     @State private var selectedDocument: TypistDocument?
     @State private var themeManager = ThemeManager()
+    @State private var appFontLibrary = AppFontLibrary()
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var searchText: String = ""
 
@@ -55,6 +56,7 @@ struct ContentView: View {
         .tint(Color.catppuccinBlue)
         .preferredColorScheme(themeManager.colorScheme)
         .environment(themeManager)
+        .environment(appFontLibrary)
     }
 }
 

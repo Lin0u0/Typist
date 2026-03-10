@@ -8,6 +8,7 @@ import UIKit
 import UniformTypeIdentifiers
 
 struct SettingsView: View {
+    @Environment(AppFontLibrary.self) private var appFontLibrary
     @Environment(ThemeManager.self) private var themeManager
     @Environment(\.dismiss) private var dismiss
 
@@ -33,6 +34,7 @@ struct SettingsView: View {
                 headerSection
                 appearanceSection
                 projectsSection
+                fontsSection
                 cacheSection
                 aboutSection
             }
@@ -141,6 +143,23 @@ struct SettingsView: View {
         }
     }
 
+    private var fontsSection: some View {
+        Section("Fonts") {
+            NavigationLink {
+                AppFontManagementView()
+            } label: {
+                HStack {
+                    Label("App Fonts", systemImage: "textformat")
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text(appFontLibrary.isEmpty ? "Built-in only" : "\(appFontLibrary.fileNames.count) imported")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .listRowBackground(Color.catppuccinElevated)
+        }
+    }
+
     private var cacheSection: some View {
         Section("Cache") {
             NavigationLink {
@@ -161,6 +180,100 @@ struct SettingsView: View {
                 Text("Acknowledgements")
             }
             .listRowBackground(Color.catppuccinElevated)
+        }
+    }
+}
+
+private struct AppFontManagementView: View {
+    @Environment(AppFontLibrary.self) private var appFontLibrary
+
+    @State private var showingFontPicker = false
+    @State private var actionError: String?
+
+    var body: some View {
+        List {
+            overviewSection
+            fontsSection
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.catppuccinBase)
+        .navigationTitle("App Fonts")
+        .navigationBarTitleDisplayMode(.inline)
+        .fileImporter(
+            isPresented: $showingFontPicker,
+            allowedContentTypes: [.font],
+            allowsMultipleSelection: true
+        ) { result in
+            guard case .success(let urls) = result else {
+                if case .failure(let error) = result {
+                    actionError = error.localizedDescription
+                }
+                return
+            }
+
+            do {
+                try appFontLibrary.importFonts(from: urls)
+            } catch {
+                actionError = error.localizedDescription
+            }
+        }
+        .alert("Font Error", isPresented: Binding(
+            get: { actionError != nil },
+            set: { if !$0 { actionError = nil } }
+        )) {
+            Button("OK") { actionError = nil }
+        } message: {
+            Text(actionError ?? "")
+        }
+    }
+
+    private var overviewSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("App fonts are available to every project.")
+                    .font(.body.weight(.medium))
+                Text("Bundled Source Han CJK fonts are built in and read-only. Imported App fonts are not included when you export a project ZIP.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 4)
+            .listRowBackground(Color.catppuccinElevated)
+        }
+    }
+
+    private var fontsSection: some View {
+        Section("App Fonts") {
+            ForEach(appFontLibrary.items) { item in
+                appFontRow(item)
+                    .listRowBackground(Color.catppuccinElevated)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        if let fileName = item.fileName, !item.isBuiltIn {
+                            Button("Delete", role: .destructive) {
+                                appFontLibrary.delete(fileName: fileName)
+                            }
+                        }
+                    }
+            }
+
+            Button {
+                showingFontPicker = true
+            } label: {
+                Label("Add Font…", systemImage: "plus")
+                    .foregroundStyle(.primary)
+            }
+            .listRowBackground(Color.catppuccinElevated)
+        }
+    }
+
+    private func appFontRow(_ item: AppFontItem) -> some View {
+        HStack {
+            Label(item.displayName, systemImage: "textformat")
+                .foregroundStyle(item.isBuiltIn ? .secondary : .primary)
+            Spacer()
+            Text(item.isBuiltIn ? "built-in" : "app")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
     }
 }

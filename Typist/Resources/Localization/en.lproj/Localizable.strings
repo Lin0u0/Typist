@@ -129,4 +129,6 @@
 "Reference implementation for Swift/Rust interop." = "Reference implementation for Swift/Rust interop.";
 "Thanks to everyone at Donut for support and inspiration." = "Thanks to everyone at Donut for support and inspiration.";
 "Compilation Error" = "Compilation Error";
+"Show Details" = "Show Details";
+"Hide Details" = "Hide Details";
 "Start typing to see a live preview" = "Start typing to see a live preview";

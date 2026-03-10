@@ -58,6 +58,102 @@ enum FontManager {
         return nil
     }
 
+    // MARK: - App-level fonts
+
+    private static var applicationSupportURL: URL {
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            fatalError("ApplicationSupportDirectory unavailable — this should never happen in a sandboxed app")
+        }
+        return appSupport
+    }
+
+    static func appFontsDirectory(rootURL: URL? = nil) -> URL {
+        (rootURL ?? applicationSupportURL)
+            .appendingPathComponent("AppFonts", isDirectory: true)
+    }
+
+    static func createAppFontsDirectory(rootURL: URL? = nil) throws {
+        try FileManager.default.createDirectory(
+            at: appFontsDirectory(rootURL: rootURL),
+            withIntermediateDirectories: true
+        )
+    }
+
+    static func ensureAppFontsDirectory(rootURL: URL? = nil) {
+        try? createAppFontsDirectory(rootURL: rootURL)
+    }
+
+    static func appFontFileNames(rootURL: URL? = nil) -> [String] {
+        let directory = appFontsDirectory(rootURL: rootURL)
+        guard let items = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else {
+            return []
+        }
+
+        return items
+            .filter { !$0.hasPrefix(".") }
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    static func appImportedFontPaths(rootURL: URL? = nil) -> [String] {
+        let directory = appFontsDirectory(rootURL: rootURL)
+        return appFontFileNames(rootURL: rootURL).compactMap { fileName in
+            let path = directory.appendingPathComponent(fileName).path
+            return FileManager.default.fileExists(atPath: path) ? path : nil
+        }
+    }
+
+    static func appFontItems(rootURL: URL? = nil) -> [AppFontItem] {
+        let builtInItems = bundledCJKFontPaths.map { path in
+            AppFontItem(
+                displayName: typstFamilyName(forBundledPath: path)
+                    ?? URL(fileURLWithPath: path).lastPathComponent,
+                path: path,
+                fileName: URL(fileURLWithPath: path).lastPathComponent,
+                isBuiltIn: true
+            )
+        }
+
+        let importedItems = appImportedFontPaths(rootURL: rootURL).map { path in
+            let fileURL = URL(fileURLWithPath: path)
+            return AppFontItem(
+                displayName: fileURL.lastPathComponent,
+                path: path,
+                fileName: fileURL.lastPathComponent,
+                isBuiltIn: false
+            )
+        }
+
+        return builtInItems + importedItems
+    }
+
+    /// Copy a font file into the App font directory.
+    /// Returns the destination file name on success.
+    @discardableResult
+    static func importAppFont(from sourceURL: URL, rootURL: URL? = nil) throws -> String {
+        let accessing = sourceURL.startAccessingSecurityScopedResource()
+        defer { if accessing { sourceURL.stopAccessingSecurityScopedResource() } }
+
+        ensureAppFontsDirectory(rootURL: rootURL)
+        let fileName = sourceURL.lastPathComponent
+        let destination = appFontsDirectory(rootURL: rootURL)
+            .appendingPathComponent(fileName)
+
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.removeItem(at: destination)
+        }
+        try FileManager.default.copyItem(at: sourceURL, to: destination)
+        os_log(.info, "FontManager: imported %{public}@ into App font library", fileName)
+        return fileName
+    }
+
+    /// Delete a custom App font file.
+    static func deleteAppFont(fileName: String, rootURL: URL? = nil) {
+        let url = appFontsDirectory(rootURL: rootURL)
+            .appendingPathComponent(fileName)
+        try? FileManager.default.removeItem(at: url)
+        os_log(.info, "FontManager: deleted %{public}@ from App font library", fileName)
+    }
+
     // MARK: - Import / Delete (per-project)
 
     /// Copy a font file into the project's fonts directory.
@@ -97,14 +193,16 @@ enum FontManager {
 
     // MARK: - Resolve paths for compilation
 
-    /// Returns all font file paths: bundled CJK fonts + document's custom fonts.
-    static func allFontPaths(for document: TypistDocument) -> [String] {
+    /// Returns all font file paths in precedence order:
+    /// bundled CJK fonts, project fonts, then imported App fonts.
+    static func allFontPaths(for document: TypistDocument, appRootURL: URL? = nil) -> [String] {
         var paths: [String] = bundledCJKFontPaths
         for name in document.fontFileNames {
             if let path = fontFilePath(for: name, in: document) {
                 paths.append(path)
             }
         }
+        paths.append(contentsOf: appImportedFontPaths(rootURL: appRootURL))
         return paths
     }
 

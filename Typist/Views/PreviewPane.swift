@@ -9,6 +9,40 @@
 import SwiftUI
 import PDFKit
 
+private struct CompilationErrorPresentation {
+    let summary: String
+    let detail: String
+    let location: String?
+}
+
+private extension View {
+    @ViewBuilder
+    func compilationErrorSurface(cornerRadius: CGFloat = 18) -> some View {
+        if #available(iOS 26, *) {
+            self
+                .glassEffect(
+                    .regular.tint(Color.catppuccinDanger.opacity(0.14)),
+                    in: .rect(cornerRadius: cornerRadius)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(Color.catppuccinDanger.opacity(0.22), lineWidth: 1)
+                }
+        } else {
+            self
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(Color.catppuccinDanger.opacity(0.08))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(Color.catppuccinDanger.opacity(0.24), lineWidth: 1)
+                }
+        }
+    }
+}
+
 // MARK: - PDFKit wrapper
 
 /// PDFView subclass that refuses first-responder so it never steals focus
@@ -110,6 +144,7 @@ struct PreviewPane: View {
     var rootDir: String?
     var compileToken: UUID = UUID()
     var focusCoordinator: EditorFocusCoordinator? = nil
+    @State private var isShowingErrorDetails = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -121,7 +156,10 @@ struct PreviewPane: View {
             }
 
             if let error = compiler.errorMessage {
-                errorBanner(error)
+                errorToast(error)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             if compiler.isCompiling {
@@ -136,10 +174,19 @@ struct PreviewPane: View {
         .onChange(of: fontPaths) { compileIfNeeded() }
         .onChange(of: rootDir) { compileIfNeeded() }
         .onChange(of: compileToken) { compileIfNeeded() }
+        .onChange(of: compiler.errorMessage, initial: true) { _, newValue in
+            let shouldExpand = (newValue != nil) && (compiler.pdfDocument == nil)
+            guard shouldExpand != isShowingErrorDetails else { return }
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isShowingErrorDetails = shouldExpand
+            }
+        }
         .onDisappear {
             focusCoordinator?.setResignSuppressed(false)
             compiler.cancel()
         }
+        .animation(.easeInOut(duration: 0.2), value: compiler.errorMessage)
+        .animation(.easeInOut(duration: 0.2), value: isShowingErrorDetails)
     }
 
     /// Only compile when the source contains meaningful content.
@@ -171,17 +218,115 @@ struct PreviewPane: View {
         .background(Color.catppuccinMantle)
     }
 
-    private func errorBanner(_ message: String) -> some View {
-        ScrollView {
-            Text(message)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(Color.catppuccinText)
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private func errorToast(_ message: String) -> some View {
+        let presentation = errorPresentation(from: message)
+        let showsDetailToggle =
+            presentation.detail != presentation.summary || presentation.detail.count > 140
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.catppuccinDanger)
+                    .frame(width: 30, height: 30)
+                    .background(Color.catppuccinDanger.opacity(0.14), in: Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Compilation Error")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.catppuccinText)
+                    Text(presentation.summary)
+                        .font(.footnote)
+                        .foregroundStyle(Color.catppuccinText.opacity(0.86))
+                        .lineLimit(isShowingErrorDetails ? nil : 2)
+
+                    if let location = presentation.location {
+                        HStack(spacing: 6) {
+                            Image(systemName: "scope")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text(location)
+                                .font(.system(.caption, design: .monospaced))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        .foregroundStyle(Color.catppuccinText.opacity(0.78))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.catppuccinDanger.opacity(0.08), in: Capsule())
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                if showsDetailToggle {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isShowingErrorDetails.toggle()
+                        }
+                    } label: {
+                        Text(isShowingErrorDetails ? "Hide Details" : "Show Details")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.catppuccinDanger)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.catppuccinDanger.opacity(0.12), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if isShowingErrorDetails {
+                ScrollView {
+                    Text(presentation.detail)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(Color.catppuccinText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+                .frame(maxHeight: 160)
+                .padding(.top, 2)
+            }
         }
-        .frame(maxHeight: 120)
-        .background(Color.catppuccinDanger.opacity(0.9))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .padding()
+        .padding(14)
+        .frame(maxWidth: 520, alignment: .leading)
+        .compilationErrorSurface(cornerRadius: 18)
+        .shadow(color: Color.black.opacity(0.12), radius: 16, y: 8)
+    }
+
+    private func normalizedErrorMessage(_ message: String) -> String {
+        message.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func errorPresentation(from message: String) -> CompilationErrorPresentation {
+        let normalizedMessage = normalizedErrorMessage(message)
+        let lines = normalizedMessage.components(separatedBy: .newlines)
+
+        let location = lines.compactMap(parsedLocation(from:)).first
+        let summary = lines
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty && parsedLocation(from: $0) == nil }) ?? normalizedMessage
+
+        return CompilationErrorPresentation(
+            summary: summary,
+            detail: normalizedMessage,
+            location: location
+        )
+    }
+
+    private func parsedLocation(from line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("("), trimmed.hasSuffix(")") else { return nil }
+        let candidate = String(trimmed.dropFirst().dropLast())
+        let parts = candidate.split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count >= 3,
+              let line = Int(parts[parts.count - 2]),
+              let column = Int(parts[parts.count - 1]),
+              line > 0,
+              column > 0 else {
+            return nil
+        }
+
+        let path = parts.dropLast(2).joined(separator: ":")
+        return path.isEmpty ? nil : candidate
     }
 }

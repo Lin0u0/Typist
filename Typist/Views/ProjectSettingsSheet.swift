@@ -9,10 +9,10 @@ import UniformTypeIdentifiers
 struct ProjectSettingsSheet: View {
     @Bindable var document: TypistDocument
     var openFile: ((String) -> Void)?
+    @Environment(AppFontLibrary.self) private var appFontLibrary
     @Environment(\.dismiss) private var dismiss
     @State private var typFiles: [String] = []
     @State private var showingFontPicker = false
-    @State private var bundledFontNames: [(path: String, name: String)] = []
     @State private var actionError: String?
 
     var body: some View {
@@ -45,20 +45,42 @@ struct ProjectSettingsSheet: View {
                 }
 
                 // MARK: Fonts
-                Section(header: Text("Fonts"), footer: Text("Bundled fonts are always available in Typst by their listed names.")) {
-                    ForEach(bundledFontNames, id: \.path) { item in
+                Section(
+                    header: Text("Fonts"),
+                    footer: Text("App fonts are available to every project. Built-in App fonts are read-only; Add Font imports project-only fonts.")
+                ) {
+                    Text("App Fonts")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    ForEach(appFontLibrary.items) { item in
                         HStack {
-                            Label(item.name, systemImage: "textformat")
-                                .foregroundStyle(.secondary)
+                            Label(item.displayName, systemImage: "textformat")
+                                .foregroundStyle(item.isBuiltIn ? .secondary : .primary)
                             Spacer()
-                            Text("built-in")
+                            Text(item.isBuiltIn ? "built-in" : "app")
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
                         }
                     }
 
+                    Text("Project Fonts")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if document.fontFileNames.isEmpty {
+                        Text("No project fonts")
+                            .foregroundStyle(.tertiary)
+                    }
+
                     ForEach(document.fontFileNames, id: \.self) { name in
-                        Label(name, systemImage: "doc.text")
+                        HStack {
+                            Label(name, systemImage: "doc.text")
+                            Spacer()
+                            Text("project")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
                     }
                     .onDelete { offsets in
                         let names = offsets.map { document.fontFileNames[$0] }
@@ -121,12 +143,6 @@ struct ProjectSettingsSheet: View {
         .onAppear {
             typFiles = ProjectFileManager.listAllTypFiles(for: document)
             if typFiles.isEmpty { typFiles = [document.entryFileName] }
-            // Pre-compute font names off the render cycle (reads font files from disk)
-            bundledFontNames = FontManager.bundledCJKFontPaths.map { path in
-                let name = FontManager.typstFamilyName(forBundledPath: path)
-                    ?? URL(fileURLWithPath: path).lastPathComponent
-                return (path: path, name: name)
-            }
         }
     }
 }

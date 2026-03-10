@@ -11,6 +11,7 @@ struct ProjectFileBrowserSheet: View {
     var currentFileName: String
     var openFile: (String) -> Void
 
+    @Environment(AppFontLibrary.self) private var appFontLibrary
     @Environment(\.dismiss) private var dismiss
     @State private var projectTree: [ProjectTreeNode] = []
     @State private var entryFiles: [String] = []
@@ -162,13 +163,39 @@ struct ProjectFileBrowserSheet: View {
                     .font(.caption)
                 }
 
+                Text("App Fonts")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ForEach(appFontLibrary.items) { item in
+                    HStack {
+                        Label(item.displayName, systemImage: "textformat")
+                            .font(.subheadline)
+                            .foregroundStyle(item.isBuiltIn ? .secondary : .primary)
+                        Spacer()
+                        Text(item.isBuiltIn ? "built-in" : "app")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+
+                Text("Project Fonts")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 if document.fontFileNames.isEmpty {
-                    Text("No fonts")
+                    Text("No project fonts")
                         .foregroundStyle(.tertiary)
                 } else {
                     ForEach(document.fontFileNames.sorted(), id: \.self) { name in
-                        Label(name, systemImage: "textformat")
-                            .font(.subheadline)
+                        HStack {
+                            Label(name, systemImage: "textformat")
+                                .font(.subheadline)
+                            Spacer()
+                            Text("project")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
                     }
                 }
             }

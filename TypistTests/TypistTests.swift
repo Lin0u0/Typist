@@ -213,6 +213,96 @@ struct TypistTests {
         #expect(FileManager.default.fileExists(atPath: ProjectFileManager.projectDirectory(for: doc).appendingPathComponent("cover.png").path))
     }
 
+    @Test func appFontLibraryImportsDeletesAndReloadsCustomFonts() throws {
+        let appRoot = makeTempDirectory()
+        let sourceRoot = makeTempDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: appRoot)
+            try? FileManager.default.removeItem(at: sourceRoot)
+        }
+
+        let inter = sourceRoot.appendingPathComponent("Inter-Regular.otf")
+        let mono = sourceRoot.appendingPathComponent("Mono.ttf")
+        try Data("inter".utf8).write(to: inter)
+        try Data("mono".utf8).write(to: mono)
+
+        let library = AppFontLibrary(rootURL: appRoot)
+        #expect(library.isEmpty)
+
+        try library.importFonts(from: [mono, inter])
+
+        #expect(library.fileNames == ["Inter-Regular.otf", "Mono.ttf"])
+        #expect(FileManager.default.fileExists(atPath: FontManager.appFontsDirectory(rootURL: appRoot).appendingPathComponent("Inter-Regular.otf").path))
+
+        library.delete(fileName: "Inter-Regular.otf")
+
+        #expect(library.fileNames == ["Mono.ttf"])
+
+        let reloaded = AppFontLibrary(rootURL: appRoot)
+        #expect(reloaded.fileNames == ["Mono.ttf"])
+        #expect(!reloaded.isEmpty)
+    }
+
+    @Test func fontManagerAllFontPathsKeepsProjectFontsAheadOfAppFonts() throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        let appRoot = makeTempDirectory()
+        let sourceRoot = makeTempDirectory()
+        defer {
+            try? ProjectFileManager.deleteProjectDirectory(for: doc)
+            try? FileManager.default.removeItem(at: appRoot)
+            try? FileManager.default.removeItem(at: sourceRoot)
+        }
+
+        ProjectFileManager.ensureProjectStructure(for: doc)
+
+        let projectFontName = "ProjectOverride.ttf"
+        let projectFontURL = ProjectFileManager.fontsDirectory(for: doc).appendingPathComponent(projectFontName)
+        try Data("project".utf8).write(to: projectFontURL)
+        doc.fontFileNames = [projectFontName]
+
+        let appFontSource = sourceRoot.appendingPathComponent("GlobalFallback.otf")
+        try Data("app".utf8).write(to: appFontSource)
+        try FontManager.importAppFont(from: appFontSource, rootURL: appRoot)
+
+        let paths = FontManager.allFontPaths(for: doc, appRootURL: appRoot)
+        let builtInCount = FontManager.bundledCJKFontPaths.count
+
+        #expect(Array(paths.prefix(builtInCount)) == FontManager.bundledCJKFontPaths)
+        #expect(Array(paths.dropFirst(builtInCount)) == [
+            projectFontURL.path,
+            FontManager.appFontsDirectory(rootURL: appRoot).appendingPathComponent("GlobalFallback.otf").path,
+        ])
+    }
+
+    @Test func zipProjectDoesNotIncludeAppFonts() throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        let appRoot = makeTempDirectory()
+        let sourceRoot = makeTempDirectory()
+        defer {
+            try? ProjectFileManager.deleteProjectDirectory(for: doc)
+            try? FileManager.default.removeItem(at: appRoot)
+            try? FileManager.default.removeItem(at: sourceRoot)
+        }
+
+        try ProjectFileManager.createInitialProject(for: doc)
+        try ProjectFileManager.writeTypFile(named: "main.typ", content: "= Hello", for: doc)
+
+        let appFontSource = sourceRoot.appendingPathComponent("GlobalOnly.otf")
+        try Data("global".utf8).write(to: appFontSource)
+        try FontManager.importAppFont(from: appFontSource, rootURL: appRoot)
+
+        let zipURL = try ExportManager.zipProject(for: doc)
+        defer { try? FileManager.default.removeItem(at: zipURL) }
+
+        let extractRoot = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: extractRoot) }
+
+        let extracted = try ZipImporter.extract(from: zipURL, to: extractRoot)
+
+        #expect(!extracted.contains("GlobalOnly.otf"))
+        #expect(FileManager.default.fileExists(atPath: extractRoot.appendingPathComponent("main.typ").path))
+    }
+
     @Test func previewPackageCacheSnapshotListsPackagesAndTotalSize() throws {
         let root = makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
