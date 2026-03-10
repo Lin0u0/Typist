@@ -86,8 +86,6 @@ struct InitialEntryFilePickerSheet: View {
                     }
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(Color.catppuccinBase.ignoresSafeArea())
             .navigationTitle("Import Project")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -100,8 +98,6 @@ struct InitialEntryFilePickerSheet: View {
             }
         }
         .interactiveDismissDisabled()
-        .background(Color.catppuccinBase.ignoresSafeArea())
-        .presentationBackground(Color.catppuccinBase)
         .presentationDetents([.medium])
         .onAppear {
             if requiresEntrySelection {

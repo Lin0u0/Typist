@@ -9,6 +9,7 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Environment(AppFontLibrary.self) private var appFontLibrary
+    @Environment(AppAppearanceManager.self) private var appAppearanceManager
     @Environment(ThemeManager.self) private var themeManager
     @Environment(\.dismiss) private var dismiss
 
@@ -39,8 +40,6 @@ struct SettingsView: View {
                 aboutSection
             }
             .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(Color.catppuccinBase.ignoresSafeArea())
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -66,10 +65,6 @@ struct SettingsView: View {
                 Text(zipImportError ?? "")
             }
         }
-        .background(Color.catppuccinBase.ignoresSafeArea())
-        .presentationBackground(Color.catppuccinBase)
-        .id(themeManager.themeID)
-        .preferredColorScheme(themeManager.colorScheme)
     }
 
     // MARK: - Sections
@@ -106,7 +101,7 @@ struct SettingsView: View {
                 .scaledToFit()
         } else {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color.catppuccinBlue)
+                .fill(Color.accentColor)
                 .overlay(
                     Image(systemName: "doc.text.fill")
                         .font(.system(size: 40))
@@ -117,7 +112,20 @@ struct SettingsView: View {
 
     private var appearanceSection: some View {
         Section("Appearance") {
-            Picker("Theme", selection: Binding(
+            Picker("App Appearance", selection: Binding(
+                get: { appAppearanceManager.mode },
+                set: { newMode in
+                    withTransaction(Transaction(animation: nil)) {
+                        appAppearanceManager.mode = newMode
+                    }
+                }
+            )) {
+                Text("Follow System").tag(AppAppearanceMode.system.rawValue)
+                Text("Light").tag(AppAppearanceMode.light.rawValue)
+                Text("Dark").tag(AppAppearanceMode.dark.rawValue)
+            }
+
+            Picker("Editor Theme", selection: Binding(
                 get: { themeManager.themeID },
                 set: { newID in
                     withTransaction(Transaction(animation: nil)) {
@@ -129,7 +137,6 @@ struct SettingsView: View {
                 Text("Mocha · Dark").tag("mocha")
                 Text("Latte · Light").tag("latte")
             }
-            .listRowBackground(Color.catppuccinElevated)
         }
     }
 
@@ -141,7 +148,6 @@ struct SettingsView: View {
                 Label("Import ZIP", systemImage: "square.and.arrow.down")
                     .foregroundStyle(.primary)
             }
-            .listRowBackground(Color.catppuccinElevated)
         }
     }
 
@@ -162,7 +168,6 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .listRowBackground(Color.catppuccinElevated)
         }
     }
 
@@ -174,7 +179,6 @@ struct SettingsView: View {
                 Label("Manage Package Cache", systemImage: "externaldrive.badge.person.crop")
                     .foregroundStyle(.primary)
             }
-            .listRowBackground(Color.catppuccinElevated)
         }
     }
 
@@ -185,7 +189,6 @@ struct SettingsView: View {
             } label: {
                 Text("Acknowledgements")
             }
-            .listRowBackground(Color.catppuccinElevated)
         }
     }
 }
@@ -202,8 +205,6 @@ private struct AppFontManagementView: View {
             fontsSection
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(Color.catppuccinBase.ignoresSafeArea())
         .navigationTitle(L10n.appFontsTitle)
         .navigationBarTitleDisplayMode(.inline)
         .fileImporter(
@@ -244,7 +245,6 @@ private struct AppFontManagementView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(.vertical, 4)
-            .listRowBackground(Color.catppuccinElevated)
         }
     }
 
@@ -252,7 +252,6 @@ private struct AppFontManagementView: View {
         Section(L10n.appFontsTitle) {
             ForEach(appFontLibrary.items) { item in
                 appFontRow(item)
-                    .listRowBackground(Color.catppuccinElevated)
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         if let fileName = item.fileName, !item.isBuiltIn {
                             Button("Delete", role: .destructive) {
@@ -268,7 +267,6 @@ private struct AppFontManagementView: View {
                 Label("Add Font…", systemImage: "plus.circle")
                     .foregroundStyle(.primary)
             }
-            .listRowBackground(Color.catppuccinElevated)
         }
     }
 
@@ -299,8 +297,6 @@ private struct PreviewPackageCacheManagementView: View {
             actionsSection
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(Color.catppuccinBase.ignoresSafeArea())
         .navigationTitle("Package Cache")
         .navigationBarTitleDisplayMode(.inline)
         .task { await refresh() }
@@ -335,7 +331,6 @@ private struct PreviewPackageCacheManagementView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .listRowBackground(Color.catppuccinElevated)
 
             HStack {
                 Label("Cached Packages", systemImage: "shippingbox")
@@ -343,7 +338,6 @@ private struct PreviewPackageCacheManagementView: View {
                 Text("\(snapshot.entries.count)")
                     .foregroundStyle(.secondary)
             }
-            .listRowBackground(Color.catppuccinElevated)
         }
     }
 
@@ -353,7 +347,6 @@ private struct PreviewPackageCacheManagementView: View {
             if !isLoading && snapshot.entries.isEmpty {
                 Text("No cached @preview packages")
                     .foregroundStyle(.secondary)
-                    .listRowBackground(Color.catppuccinElevated)
             } else {
                 ForEach(snapshot.entries) { entry in
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -369,7 +362,6 @@ private struct PreviewPackageCacheManagementView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    .listRowBackground(Color.catppuccinElevated)
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button("Delete", role: .destructive) {
                             Task { await delete(entry) }
@@ -386,7 +378,6 @@ private struct PreviewPackageCacheManagementView: View {
                 showingClearAllConfirmation = true
             }
             .disabled(isLoading || snapshot.entries.isEmpty)
-            .listRowBackground(Color.catppuccinElevated)
         }
     }
 
@@ -454,28 +445,24 @@ private struct AcknowledgementsView: View {
                     license: "Apache 2.0",
                     url: "https://typst.app"
                 )
-                .listRowBackground(Color.catppuccinElevated)
                 creditRow(
                     name: "Catppuccin",
                     detail: "Soothing pastel color palette powering the editor themes.",
                     license: "MIT",
                     url: "https://github.com/catppuccin/catppuccin"
                 )
-                .listRowBackground(Color.catppuccinElevated)
                 creditRow(
                     name: "Source Han Sans / Serif",
                     detail: "Bundled CJK fonts used as default fallbacks in Typist.",
                     license: "OFL-1.1",
                     url: "https://github.com/adobe-fonts/source-han-sans"
                 )
-                .listRowBackground(Color.catppuccinElevated)
                 creditRow(
                     name: "swift-bridge",
                     detail: "Reference implementation for Swift/Rust interop.",
                     license: "MIT or Apache-2.0",
                     url: "https://github.com/chinedufn/swift-bridge"
                 )
-                .listRowBackground(Color.catppuccinElevated)
             }
             Section("Special Thanks") {
                 creditRow(
@@ -484,12 +471,9 @@ private struct AcknowledgementsView: View {
                     license: nil,
                     url: "https://donutblogs.com/"
                 )
-                .listRowBackground(Color.catppuccinElevated)
             }
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(Color.catppuccinBase.ignoresSafeArea())
         .navigationTitle("Acknowledgements")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -514,7 +498,6 @@ private struct AcknowledgementsView: View {
             if let link = URL(string: url) {
                 Link(url, destination: link)
                     .font(.caption)
-                    .tint(Color.catppuccinBlue)
             }
         }
         .padding(.vertical, 4)

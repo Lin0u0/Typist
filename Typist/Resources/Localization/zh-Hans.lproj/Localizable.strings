@@ -122,7 +122,11 @@
 "Add Font…" = "添加字体…";
 "Settings" = "设置";
 "Appearance" = "外观";
-"Theme" = "主题";
+"App Appearance" = "应用外观";
+"Follow System" = "跟随系统";
+"Light" = "浅色";
+"Dark" = "深色";
+"Editor Theme" = "编辑器主题";
 "Auto" = "自动";
 "Mocha · Dark" = "Mocha · 深色";
 "Latte · Light" = "Latte · 浅色";

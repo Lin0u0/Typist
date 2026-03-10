@@ -95,8 +95,6 @@ struct ProjectSettingsSheet: View {
                     }
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(Color.catppuccinBase.ignoresSafeArea())
             .navigationTitle("Project Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -113,8 +111,6 @@ struct ProjectSettingsSheet: View {
                 Text(actionError ?? "")
             }
         }
-        .background(Color.catppuccinBase.ignoresSafeArea())
-        .presentationBackground(Color.catppuccinBase)
         .presentationDetents([.medium, .large])
         .fileImporter(
             isPresented: $showingFontPicker,

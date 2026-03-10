@@ -36,8 +36,6 @@ struct ProjectFileBrowserSheet: View {
                     }
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(Color.catppuccinBase.ignoresSafeArea())
             .navigationTitle("Project Files")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -90,8 +88,6 @@ struct ProjectFileBrowserSheet: View {
                 handleImport(result)
             }
         }
-        .background(Color.catppuccinBase.ignoresSafeArea())
-        .presentationBackground(Color.catppuccinBase)
         .presentationDetents([.medium, .large])
         .onAppear { refreshProjectState() }
         .onChange(of: document.imageDirectoryName) { _, _ in
@@ -160,16 +156,16 @@ struct ProjectFileBrowserSheet: View {
                     .font(.caption2)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.catppuccinBlue.opacity(0.16), in: Capsule())
-                    .foregroundStyle(Color.catppuccinBlue)
+                    .background(Color.accentColor.opacity(0.16), in: Capsule())
+                    .foregroundStyle(Color.accentColor)
             }
             if path == currentFileName {
                 Text("Editing")
                     .font(.caption2)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.catppuccinSuccess.opacity(0.16), in: Capsule())
-                    .foregroundStyle(Color.catppuccinSuccess)
+                    .background(Color.green.opacity(0.16), in: Capsule())
+                    .foregroundStyle(.green)
             }
         }
     }

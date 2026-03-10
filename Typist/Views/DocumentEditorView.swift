@@ -113,12 +113,12 @@ struct DocumentEditorView: View {
         .overlay {
             if isImageDropTarget {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.catppuccinBlue.opacity(0.85), style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+                    .stroke(Color.accentColor.opacity(0.85), style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
                     .padding(12)
                     .allowsHitTesting(false)
             }
         }
-        .background(Color.catppuccinMantle)
+        .background(Color(uiColor: .systemGroupedBackground))
         .ignoresSafeArea(edges: .bottom)
     }
 
@@ -131,7 +131,7 @@ struct DocumentEditorView: View {
             compileToken: compileToken,
             focusCoordinator: focusCoordinator
         )
-            .background(Color.catppuccinMantle)
+            .background(Color(uiColor: .systemGroupedBackground))
     }
 
     private func splitHandle(totalWidth: CGFloat) -> some View {
@@ -144,7 +144,7 @@ struct DocumentEditorView: View {
             }
 
         return Capsule()
-            .fill(Color.catppuccinSubtext1)
+            .fill(Color(uiColor: .separator))
             .frame(width: 2, height: 36)
             .overlay {
                 Rectangle()
@@ -185,7 +185,7 @@ struct DocumentEditorView: View {
 
                 if selectedTab == 0 { editorPane } else { previewPane }
             }
-            .background(Color.catppuccinMantle)
+            .background(Color(uiColor: .systemGroupedBackground))
         }
     }
 
@@ -268,19 +268,15 @@ struct DocumentEditorView: View {
             .navigationTitle(document.title)
             .navigationSubtitleCompat(currentFileName)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.catppuccinMantle, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .background(Color.catppuccinMantle.ignoresSafeArea())
+            .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: shareButtonAction) {
                         Image(systemName: "square.and.arrow.up")
                     }
-                    .tint(Color.catppuccinText)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     toolbarMenu
-                        .tint(Color.catppuccinText)
                 }
             }
     }
@@ -354,10 +350,12 @@ struct DocumentEditorView: View {
             .overlay {
                 if exporter.isExporting {
                     ZStack {
-                        Color.catppuccinOverlayScrim.ignoresSafeArea()
+                        Rectangle()
+                            .fill(.ultraThinMaterial)
+                            .ignoresSafeArea()
                         ProgressView("Compiling…")
                             .padding()
-                            .catppuccinFloatingSurface(cornerRadius: 12)
+                            .systemFloatingSurface(cornerRadius: 12)
                     }
                 }
             }
@@ -365,10 +363,10 @@ struct DocumentEditorView: View {
                 if let toast = imageImportToast {
                     Text(toast)
                         .font(.footnote.weight(.medium))
-                        .foregroundStyle(Color.catppuccinText)
+                        .foregroundStyle(.primary)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
-                        .catppuccinFloatingSurface(cornerRadius: 999)
+                        .systemFloatingSurface(cornerRadius: 999)
                         .padding(.bottom, 18)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }

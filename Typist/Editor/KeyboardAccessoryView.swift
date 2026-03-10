@@ -33,7 +33,7 @@ final class KeyboardAccessoryView: UIInputView {
         self.textView = textView
         super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 44), inputViewStyle: .default)
         allowsSelfSizing = true
-        backgroundColor = .catppuccinMantle
+        backgroundColor = .secondarySystemBackground
         setupViews()
     }
 
@@ -62,7 +62,7 @@ final class KeyboardAccessoryView: UIInputView {
 
         // Separator
         let separator = UIView()
-        separator.backgroundColor = .catppuccinSurface0
+        separator.backgroundColor = .separator
         separator.translatesAutoresizingMaskIntoConstraints = false
 
         // Photo / Undo / Redo
@@ -112,7 +112,7 @@ final class KeyboardAccessoryView: UIInputView {
 
     private func makeButton(title: String? = nil, systemImage: String? = nil, action: @escaping () -> Void) -> UIButton {
         var config = UIButton.Configuration.plain()
-        config.baseForegroundColor = .catppuccinText
+        config.baseForegroundColor = .label
         if let title {
             config.title = title
             config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in

@@ -3,8 +3,8 @@
 //  Typist
 //
 
-import SwiftUI
 import Observation
+import Foundation
 
 @Observable
 final class ThemeManager {
@@ -25,6 +25,4 @@ final class ThemeManager {
         default:      return .system
         }
     }
-
-    var colorScheme: ColorScheme? { currentTheme.colorScheme }
 }

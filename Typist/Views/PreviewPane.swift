@@ -18,28 +18,12 @@ private struct CompilationErrorPresentation {
 private extension View {
     @ViewBuilder
     func compilationErrorSurface(cornerRadius: CGFloat = 18) -> some View {
-        if #available(iOS 26, *) {
-            self
-                .glassEffect(
-                    .regular.tint(Color.catppuccinDanger.opacity(0.14)),
-                    in: .rect(cornerRadius: cornerRadius)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(Color.catppuccinDanger.opacity(0.22), lineWidth: 1)
-                }
-        } else {
-            self
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(Color.catppuccinDanger.opacity(0.08))
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(Color.catppuccinDanger.opacity(0.24), lineWidth: 1)
-                }
-        }
+        self
+            .systemFloatingSurface(cornerRadius: cornerRadius)
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color.red.opacity(0.2), lineWidth: 1)
+            }
     }
 }
 
@@ -78,7 +62,7 @@ final class PDFContainerView: UIView {
     }
 
     func reloadDocument(_ document: PDFDocument, focusCoordinator: EditorFocusCoordinator?) {
-        pdfView.backgroundColor = .catppuccinMantle
+        pdfView.backgroundColor = .secondarySystemBackground
 
         guard pdfView.document !== document else {
             focusCoordinator?.setResignSuppressed(false)
@@ -183,7 +167,7 @@ struct PDFKitView: UIViewRepresentable {
         pdfView.autoScales = true
         pdfView.displayMode = .singlePageContinuous
         pdfView.displayDirection = .vertical
-        pdfView.backgroundColor = .catppuccinMantle
+        pdfView.backgroundColor = .secondarySystemBackground
         return container
     }
 
@@ -222,7 +206,7 @@ struct PreviewPane: View {
             if compiler.isCompiling {
                 ProgressView()
                     .padding(8)
-                    .catppuccinFloatingSurface(cornerRadius: 8)
+                    .systemFloatingSurface(cornerRadius: 8)
                     .padding()
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
@@ -272,7 +256,7 @@ struct PreviewPane: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.catppuccinMantle)
+        .background(Color(uiColor: .secondarySystemBackground))
     }
 
     private func errorToast(_ message: String) -> some View {
@@ -284,17 +268,17 @@ struct PreviewPane: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.catppuccinDanger)
+                    .foregroundStyle(.red)
                     .frame(width: 30, height: 30)
-                    .background(Color.catppuccinDanger.opacity(0.14), in: Circle())
+                    .background(Color.red.opacity(0.12), in: Circle())
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Compilation Error")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.catppuccinText)
+                        .foregroundStyle(.primary)
                     Text(presentation.summary)
                         .font(.footnote)
-                        .foregroundStyle(Color.catppuccinText.opacity(0.86))
+                        .foregroundStyle(.secondary)
                         .lineLimit(isShowingErrorDetails ? nil : 2)
 
                     if let location = presentation.location {
@@ -306,10 +290,10 @@ struct PreviewPane: View {
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                         }
-                        .foregroundStyle(Color.catppuccinText.opacity(0.78))
+                        .foregroundStyle(.secondary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .background(Color.catppuccinDanger.opacity(0.08), in: Capsule())
+                        .background(Color(uiColor: .secondarySystemBackground), in: Capsule())
                     }
                 }
 
@@ -323,10 +307,10 @@ struct PreviewPane: View {
                     } label: {
                         Text(isShowingErrorDetails ? "Hide Details" : "Show Details")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.catppuccinDanger)
+                            .foregroundStyle(.red)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(Color.catppuccinDanger.opacity(0.12), in: Capsule())
+                            .background(Color.red.opacity(0.12), in: Capsule())
                     }
                     .buttonStyle(.plain)
                 }
@@ -336,7 +320,7 @@ struct PreviewPane: View {
                 ScrollView {
                     Text(presentation.detail)
                         .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(Color.catppuccinText)
+                        .foregroundStyle(.primary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                 }

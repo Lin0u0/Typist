@@ -48,7 +48,6 @@ struct DocumentListView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(ThemeManager.self) private var themeManager
     @Query(sort: \TypistDocument.modifiedAt, order: .reverse) private var documents: [TypistDocument]
     @Binding var selectedDocument: TypistDocument?
     @Binding var searchText: String
@@ -60,7 +59,6 @@ struct DocumentListView: View {
     @State private var projectActionError: String? = nil
     @State private var zipImportError: String? = nil
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.colorScheme) private var colorScheme
     @State private var monitor = DirectoryMonitor()
     @State private var syncTask: Task<Void, Never>?
     @State private var sortField: SortField = .modifiedAt
@@ -95,10 +93,12 @@ struct DocumentListView: View {
             .overlay {
                 if exporter.isExporting {
                     ZStack {
-                        Color.catppuccinOverlayScrim.ignoresSafeArea()
+                        Rectangle()
+                            .fill(.ultraThinMaterial)
+                            .ignoresSafeArea()
                         ProgressView("Compiling…")
                             .padding()
-                            .catppuccinFloatingSurface(cornerRadius: 12)
+                            .systemFloatingSurface(cornerRadius: 12)
                     }
                 }
             }
@@ -163,7 +163,6 @@ struct DocumentListView: View {
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView(onImport: { url in importZip(from: url) })
-                    .preferredColorScheme(themeManager.colorScheme)
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { scheduleFilesystemSync(delay: .milliseconds(100)) }
@@ -187,8 +186,6 @@ struct DocumentListView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(Color.catppuccinBase)
         .overlay {
             if isShowingLibraryEmptyState {
                 libraryEmptyState
@@ -211,32 +208,21 @@ struct DocumentListView: View {
     }
 
     private func documentRow(_ document: TypistDocument) -> some View {
-        let isSelected = selectedDocument === document
-
         return NavigationLink(value: document) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(document.title)
                     .font(.headline)
-                    .foregroundStyle(isSelected ? Color.catppuccinBlue : Color.primary)
                     .lineLimit(1)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(L10n.tr("doc.time.created")): \(document.createdAt.formatted(rowDateFormat))")
                     Text("\(L10n.tr("doc.time.modified")): \(document.modifiedAt.formatted(rowDateFormat))")
                 }
                 .font(.caption)
-                .foregroundStyle(Color.catppuccinSubtext1)
+                .foregroundStyle(.secondary)
             }
             .padding(.vertical, 4)
             .padding(.horizontal, 6)
         }
-        .listRowBackground(
-            ZStack {
-                Color.catppuccinElevated
-                if isSelected {
-                    Color.catppuccinBlue.opacity(0.16)
-                }
-            }
-        )
         .contextMenu {
             Button {
                 renamingDocument = document
@@ -276,10 +262,6 @@ struct DocumentListView: View {
         ContentUnavailableView.search(text: searchText)
     }
 
-    private var toolbarButtonTint: Color {
-        colorScheme == .dark ? .white : .black
-    }
-
     @ToolbarContentBuilder
     private var iPadToolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
@@ -287,7 +269,6 @@ struct DocumentListView: View {
                 Image(systemName: "gearshape")
                     .scaleEffect(0.8)
             }
-            .tint(toolbarButtonTint)
         }
         ToolbarItem(placement: .primaryAction) {
             sortMenu
@@ -297,7 +278,6 @@ struct DocumentListView: View {
                 Image(systemName: "folder.badge.plus")
                     .scaleEffect(0.8)
             }
-            .tint(toolbarButtonTint)
         }
     }
 
@@ -313,12 +293,10 @@ struct DocumentListView: View {
             Button { showingSettings = true } label: {
                 Image(systemName: "gearshape")
             }
-            .tint(toolbarButtonTint)
         }
         ToolbarSpacer(.flexible, placement: .bottomBar)
         ToolbarItem(placement: .bottomBar) {
             Button(action: addDocument) { Image(systemName: "folder.badge.plus") }
-                .tint(toolbarButtonTint)
         }
     }
 
@@ -330,7 +308,6 @@ struct DocumentListView: View {
                 .scaleEffect(0.8)
         }
         .buttonStyle(.plain)
-        .tint(toolbarButtonTint)
         .accessibilityLabel(L10n.tr("sort.menu.button"))
         .accessibilityValue("\(sortField.label), \(sortDirection.label)")
         .popover(
@@ -365,7 +342,7 @@ struct DocumentListView: View {
             }
             .padding(12)
             .frame(width: 240)
-            .catppuccinFloatingSurface(cornerRadius: 16)
+            .systemFloatingSurface(cornerRadius: 16)
             .presentationCompactAdaptation(.popover)
         }
     }
@@ -375,7 +352,7 @@ struct DocumentListView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.catppuccinSubtext1)
+                .foregroundStyle(.secondary)
                 .textCase(.uppercase)
 
             content()

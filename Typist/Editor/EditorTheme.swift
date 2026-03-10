@@ -4,7 +4,6 @@
 //
 
 import UIKit
-import SwiftUI
 
 struct EditorTheme {
     let id: String
@@ -24,7 +23,6 @@ struct EditorTheme {
     let number: UIColor
     let markup: UIColor
     let rainbow: [UIColor]
-    let colorScheme: ColorScheme?
 
     // MARK: - Mocha (forced dark)
 
@@ -53,7 +51,6 @@ struct EditorTheme {
             UIColor(hex: "#F5C2E7"),
             UIColor(hex: "#F9E2AF"),
         ],
-        colorScheme: .dark
     )
 
     // MARK: - Latte (forced light)
@@ -83,7 +80,6 @@ struct EditorTheme {
             UIColor(hex: "#EA76CB"),
             UIColor(hex: "#DF8E1D"),
         ],
-        colorScheme: .light
     )
 
     // MARK: - System (adaptive: Latte in light, Mocha in dark)
@@ -117,109 +113,8 @@ struct EditorTheme {
                 a("#F5C2E7", "#EA76CB"),
                 a("#F9E2AF", "#DF8E1D"),
             ],
-            colorScheme: nil
         )
     }()
-}
-
-// MARK: - UIColor adaptive palette (for SwiftUI UI theming)
-
-extension UIColor {
-    /// Catppuccin Mantle: sidebar / navigation bar background.
-    static let catppuccinMantle = UIColor {
-        $0.userInterfaceStyle == .dark ? UIColor(hex: "#181825") : UIColor(hex: "#E6E9EF")
-    }
-    /// Catppuccin Surface0: list row background.
-    static let catppuccinSurface0 = UIColor {
-        $0.userInterfaceStyle == .dark ? UIColor(hex: "#313244") : UIColor(hex: "#CCD0DA")
-    }
-    /// Catppuccin blue accent.
-    static let catppuccinBlue = UIColor {
-        $0.userInterfaceStyle == .dark ? UIColor(hex: "#89B4FA") : UIColor(hex: "#1E66F5")
-    }
-    /// Catppuccin Subtext1: secondary text.
-    static let catppuccinSubtext1 = UIColor {
-        $0.userInterfaceStyle == .dark ? UIColor(hex: "#BAC2DE") : UIColor(hex: "#5C5F77")
-    }
-    /// Catppuccin base background.
-    static let catppuccinBase = UIColor {
-        $0.userInterfaceStyle == .dark ? UIColor(hex: "#1E1E2E") : UIColor(hex: "#EFF1F5")
-    }
-    /// Elevated container background.
-    /// Light mode uses Mantle (slightly darker than Base); dark mode uses Surface0 (slightly lighter than Base).
-    static let catppuccinElevated = UIColor {
-        $0.userInterfaceStyle == .dark ? UIColor.catppuccinSurface0 : UIColor.catppuccinMantle
-    }
-    /// Catppuccin primary text.
-    static let catppuccinText = UIColor {
-        $0.userInterfaceStyle == .dark ? UIColor(hex: "#CDD6F4") : UIColor(hex: "#4C4F69")
-    }
-    /// Semantic success accent within the Catppuccin palette.
-    static let catppuccinSuccess = UIColor {
-        $0.userInterfaceStyle == .dark ? UIColor(hex: "#A6E3A1") : UIColor(hex: "#40A02B")
-    }
-    /// Semantic danger accent within the Catppuccin palette.
-    static let catppuccinDanger = UIColor {
-        $0.userInterfaceStyle == .dark ? UIColor(hex: "#F38BA8") : UIColor(hex: "#D20F39")
-    }
-    /// Shared dimming scrim for modal work states.
-    static let catppuccinOverlayScrim = UIColor {
-        $0.userInterfaceStyle == .dark
-            ? UIColor(hex: "#11111B").withAlphaComponent(0.52)
-            : UIColor(hex: "#DCE0E8").withAlphaComponent(0.42)
-    }
-}
-
-// MARK: - SwiftUI Color adaptive palette
-
-extension Color {
-    static let catppuccinMantle   = Color(UIColor.catppuccinMantle)
-    static let catppuccinSurface0 = Color(UIColor.catppuccinSurface0)
-    static let catppuccinBlue     = Color(UIColor.catppuccinBlue)
-    static let catppuccinSubtext1 = Color(UIColor.catppuccinSubtext1)
-    static let catppuccinBase     = Color(UIColor.catppuccinBase)
-    static let catppuccinElevated = Color(UIColor.catppuccinElevated)
-    static let catppuccinText     = Color(UIColor.catppuccinText)
-    static let catppuccinSuccess  = Color(UIColor.catppuccinSuccess)
-    static let catppuccinDanger   = Color(UIColor.catppuccinDanger)
-    static let catppuccinOverlayScrim = Color(UIColor.catppuccinOverlayScrim)
-}
-
-private struct CatppuccinFloatingSurfaceModifier: ViewModifier {
-    let cornerRadius: CGFloat
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if #available(iOS 26, *) {
-            content
-                .glassEffect(
-                    .regular.tint(Color.catppuccinSurface0.opacity(0.18)),
-                    in: .rect(cornerRadius: cornerRadius)
-                )
-        } else {
-            content
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(Color.catppuccinSurface0.opacity(0.45), lineWidth: 1)
-                }
-        }
-    }
-}
-
-extension View {
-    func catppuccinFloatingSurface(cornerRadius: CGFloat = 12) -> some View {
-        modifier(CatppuccinFloatingSurfaceModifier(cornerRadius: cornerRadius))
-    }
-
-    @ViewBuilder
-    func liquidGlassButtonIfAvailable() -> some View {
-        if #available(iOS 26, *) {
-            self.buttonStyle(.glass)
-        } else {
-            self
-        }
-    }
 }
 
 // MARK: - UIColor hex initializer

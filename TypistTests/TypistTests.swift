@@ -8,9 +8,12 @@
 import Foundation
 import PDFKit
 import Testing
+import SwiftUI
 @testable import Typist
 
 struct TypistTests {
+    private let appAppearanceDefaultsKey = "appAppearanceMode"
+    private let editorThemeDefaultsKey = "editorThemeID"
 
     @Test func zipImporterRejectsParentTraversalPath() throws {
         let zip = makeStoredZip(entries: [
@@ -212,6 +215,93 @@ struct TypistTests {
 
         #expect(relativePath == "cover.png")
         #expect(FileManager.default.fileExists(atPath: ProjectFileManager.projectDirectory(for: doc).appendingPathComponent("cover.png").path))
+    }
+
+    @Test func themeManagerPersistsEditorThemeSelection() {
+        let defaults = UserDefaults.standard
+        let originalValue = defaults.object(forKey: editorThemeDefaultsKey)
+        defer {
+            if let originalValue {
+                defaults.set(originalValue, forKey: editorThemeDefaultsKey)
+            } else {
+                defaults.removeObject(forKey: editorThemeDefaultsKey)
+            }
+        }
+
+        defaults.set("latte", forKey: editorThemeDefaultsKey)
+
+        let initialManager = ThemeManager()
+        #expect(initialManager.themeID == "latte")
+        #expect(initialManager.currentTheme.id == "latte")
+
+        initialManager.themeID = "mocha"
+
+        let reloadedManager = ThemeManager()
+        #expect(reloadedManager.themeID == "mocha")
+        #expect(reloadedManager.currentTheme.id == "mocha")
+    }
+
+    @Test func themeManagerFallsBackToSystemThemeForUnknownValue() {
+        let defaults = UserDefaults.standard
+        let originalValue = defaults.object(forKey: editorThemeDefaultsKey)
+        defer {
+            if let originalValue {
+                defaults.set(originalValue, forKey: editorThemeDefaultsKey)
+            } else {
+                defaults.removeObject(forKey: editorThemeDefaultsKey)
+            }
+        }
+
+        defaults.set("nord", forKey: editorThemeDefaultsKey)
+
+        let manager = ThemeManager()
+        #expect(manager.themeID == "nord")
+        #expect(manager.currentTheme.id == "system")
+    }
+
+    @Test func appAppearanceManagerPersistsAppearanceSelection() {
+        let defaults = UserDefaults.standard
+        let originalValue = defaults.object(forKey: appAppearanceDefaultsKey)
+        defer {
+            if let originalValue {
+                defaults.set(originalValue, forKey: appAppearanceDefaultsKey)
+            } else {
+                defaults.removeObject(forKey: appAppearanceDefaultsKey)
+            }
+        }
+
+        defaults.set(AppAppearanceMode.light.rawValue, forKey: appAppearanceDefaultsKey)
+
+        let initialManager = AppAppearanceManager()
+        #expect(initialManager.mode == AppAppearanceMode.light.rawValue)
+        #expect(initialManager.currentMode == .light)
+        #expect(initialManager.colorScheme == .light)
+
+        initialManager.mode = AppAppearanceMode.dark.rawValue
+
+        let reloadedManager = AppAppearanceManager()
+        #expect(reloadedManager.mode == AppAppearanceMode.dark.rawValue)
+        #expect(reloadedManager.currentMode == .dark)
+        #expect(reloadedManager.colorScheme == .dark)
+    }
+
+    @Test func appAppearanceManagerFallsBackToSystemForUnknownValue() {
+        let defaults = UserDefaults.standard
+        let originalValue = defaults.object(forKey: appAppearanceDefaultsKey)
+        defer {
+            if let originalValue {
+                defaults.set(originalValue, forKey: appAppearanceDefaultsKey)
+            } else {
+                defaults.removeObject(forKey: appAppearanceDefaultsKey)
+            }
+        }
+
+        defaults.set("sepia", forKey: appAppearanceDefaultsKey)
+
+        let manager = AppAppearanceManager()
+        #expect(manager.mode == "sepia")
+        #expect(manager.currentMode == .system)
+        #expect(manager.colorScheme == nil)
     }
 
     @MainActor

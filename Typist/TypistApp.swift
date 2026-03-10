@@ -10,16 +10,6 @@ import SwiftData
 
 @main
 struct TypistApp: App {
-    init() {
-        // Catppuccin-themed segmented control (adaptive dynamic UIColors)
-        UISegmentedControl.appearance().backgroundColor = .catppuccinSurface0
-        UISegmentedControl.appearance().selectedSegmentTintColor = .catppuccinBlue
-        UISegmentedControl.appearance().setTitleTextAttributes(
-            [.foregroundColor: UIColor.catppuccinText], for: .normal)
-        UISegmentedControl.appearance().setTitleTextAttributes(
-            [.foregroundColor: UIColor.white], for: .selected)
-    }
-
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             TypistDocument.self,

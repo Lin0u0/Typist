@@ -122,7 +122,11 @@
 "Add Font…" = "Add Font…";
 "Settings" = "Settings";
 "Appearance" = "Appearance";
-"Theme" = "Theme";
+"App Appearance" = "App Appearance";
+"Follow System" = "Follow System";
+"Light" = "Light";
+"Dark" = "Dark";
+"Editor Theme" = "Editor Theme";
 "Auto" = "Auto";
 "Mocha · Dark" = "Mocha · Dark";
 "Latte · Light" = "Latte · Light";

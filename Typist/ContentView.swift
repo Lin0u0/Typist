@@ -30,6 +30,7 @@ private struct SceneTitleSetter: UIViewRepresentable {
 struct ContentView: View {
     @State private var selectedDocument: TypistDocument?
     @State private var themeManager = ThemeManager()
+    @State private var appAppearanceManager = AppAppearanceManager()
     @State private var appFontLibrary = AppFontLibrary()
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var searchText: String = ""
@@ -48,13 +49,12 @@ struct ContentView: View {
                     description: Text("Select a document from the list or create a new one.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.catppuccinMantle.ignoresSafeArea())
+                .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
             }
         }
-        .background(Color.catppuccinMantle.ignoresSafeArea())
         .background(SceneTitleSetter(title: selectedDocument?.title ?? L10n.appName))
-        .tint(Color.catppuccinBlue)
-        .preferredColorScheme(themeManager.colorScheme)
+        .preferredColorScheme(appAppearanceManager.colorScheme)
+        .environment(appAppearanceManager)
         .environment(themeManager)
         .environment(appFontLibrary)
     }
