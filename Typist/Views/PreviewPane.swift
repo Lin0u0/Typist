@@ -168,10 +168,19 @@ struct PDFKitView: UIViewRepresentable {
         pdfView.displayMode = .singlePageContinuous
         pdfView.displayDirection = .vertical
         pdfView.backgroundColor = .secondarySystemBackground
+        pdfView.isAccessibilityElement = false
+        container.isAccessibilityElement = true
+        container.accessibilityIdentifier = "editor.preview"
+        container.accessibilityLabel = L10n.a11yPreviewLabel
+        container.accessibilityHint = L10n.a11yPreviewHint
+        container.accessibilityValue = L10n.a11yPreviewValueReady
         return container
     }
 
     func updateUIView(_ container: PDFContainerView, context: Context) {
+        container.accessibilityLabel = L10n.a11yPreviewLabel
+        container.accessibilityHint = L10n.a11yPreviewHint
+        container.accessibilityValue = L10n.a11yPreviewValueReady
         container.reloadDocument(document, focusCoordinator: focusCoordinator)
     }
 }
@@ -192,6 +201,12 @@ struct PreviewPane: View {
             if let pdf = compiler.pdfDocument {
                 PDFKitView(document: pdf, focusCoordinator: focusCoordinator)
                     .ignoresSafeArea(edges: .bottom)
+                    .accessibilityLabel(L10n.a11yPreviewLabel)
+                    .accessibilityHint(L10n.a11yPreviewHint)
+                    .accessibilityValue(
+                        compiler.errorMessage == nil ? L10n.a11yPreviewValueReady : L10n.a11yPreviewValueError
+                    )
+                    .accessibilityIdentifier("editor.preview")
             } else {
                 placeholderView
             }
@@ -246,6 +261,7 @@ struct PreviewPane: View {
             Image(systemName: compiler.errorMessage == nil ? "doc.richtext" : "exclamationmark.triangle")
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Text(compiler.errorMessage == nil ? "Preview" : "Compilation Error")
                 .font(.title2)
                 .foregroundStyle(.secondary)
@@ -257,6 +273,11 @@ struct PreviewPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(uiColor: .secondarySystemBackground))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.a11yPreviewPlaceholderLabel)
+        .accessibilityHint(L10n.a11yPreviewPlaceholderHint)
+        .accessibilityValue(compiler.errorMessage == nil ? L10n.a11yPreviewValueEmpty : L10n.a11yPreviewValueError)
+        .accessibilityIdentifier("editor.preview.placeholder")
     }
 
     private func errorToast(_ message: String) -> some View {
@@ -271,6 +292,7 @@ struct PreviewPane: View {
                     .foregroundStyle(.red)
                     .frame(width: 30, height: 30)
                     .background(Color.red.opacity(0.12), in: Circle())
+                    .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Compilation Error")
@@ -332,6 +354,9 @@ struct PreviewPane: View {
         .frame(maxWidth: 520, alignment: .leading)
         .compilationErrorSurface(cornerRadius: 18)
         .shadow(color: Color.black.opacity(0.12), radius: 16, y: 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(L10n.tr("Compilation Error")). \(presentation.summary)")
+        .accessibilityValue(presentation.location ?? "")
     }
 
     private func normalizedErrorMessage(_ message: String) -> String {

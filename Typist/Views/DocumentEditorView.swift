@@ -80,6 +80,7 @@ struct DocumentEditorView: View {
     @State private var showingImportConfiguration = false
     @State private var showingZipExportWarning = false
     @State private var focusCoordinator = EditorFocusCoordinator()
+    @State private var pendingManualCompileFeedback = false
 
     private var rootDir: String { ProjectFileManager.projectDirectory(for: document).path }
     private var isEditingEntryFile: Bool { currentFileName == document.entryFileName }
@@ -151,12 +152,35 @@ struct DocumentEditorView: View {
                     .fill(Color.clear)
                     .frame(width: 28, height: 44)
                     .contentShape(Rectangle())
-                    .gesture(dragGesture)
-                    .simultaneousGesture(
-                        TapGesture(count: 2).onEnded {
-                            withAnimation(.spring(duration: 0.3)) { editorFraction = 0.5 }
-                        }
-                    )
+                        .gesture(dragGesture)
+                        .simultaneousGesture(
+                            TapGesture(count: 2).onEnded {
+                                InteractionFeedback.impact(.medium)
+                                withAnimation(.spring(duration: 0.3)) { editorFraction = 0.5 }
+                            }
+                        )
+            }
+            .accessibilityElement()
+            .accessibilityLabel(L10n.a11yEditorSplitLabel)
+            .accessibilityHint(L10n.a11yEditorSplitHint)
+            .accessibilityValue(splitHandleAccessibilityValue)
+            .accessibilityIdentifier("editor.split-handle")
+            .accessibilityAdjustableAction { direction in
+                let delta: CGFloat = 0.1
+                switch direction {
+                case .increment:
+                    InteractionFeedback.selection()
+                    editorFraction = min(0.8, editorFraction + delta)
+                case .decrement:
+                    InteractionFeedback.selection()
+                    editorFraction = max(0.2, editorFraction - delta)
+                @unknown default:
+                    break
+                }
+            }
+            .accessibilityAction(named: Text(L10n.a11yEditorSplitReset)) {
+                InteractionFeedback.impact(.medium)
+                editorFraction = 0.5
             }
     }
 
@@ -180,6 +204,7 @@ struct DocumentEditorView: View {
                     Text("Preview").tag(1)
                 }
                 .pickerStyle(.segmented)
+                .accessibilityIdentifier("editor.mode-picker")
                 .padding(.horizontal)
                 .padding(.vertical, 8)
 
@@ -217,10 +242,16 @@ struct DocumentEditorView: View {
     private var toolbarMenu: some View {
         Menu {
             Section {
-                Button { showingFileBrowser = true } label: {
+                Button {
+                    InteractionFeedback.impact(.light)
+                    showingFileBrowser = true
+                } label: {
                     Label("Project Files", systemImage: "folder")
                 }
-                Button { showingProjectSettings = true } label: {
+                Button {
+                    InteractionFeedback.impact(.light)
+                    showingProjectSettings = true
+                } label: {
                     Label("Project Settings", systemImage: "gearshape")
                 }
                 Button {
@@ -252,6 +283,7 @@ struct DocumentEditorView: View {
                 .disabled(!canTriggerPreviewActions)
 
                 Button {
+                    InteractionFeedback.impact(.medium)
                     showingSlideshow = true
                 } label: {
                     Label("Slideshow", systemImage: "play.rectangle")
@@ -261,6 +293,9 @@ struct DocumentEditorView: View {
         } label: {
             Image(systemName: "ellipsis.circle")
         }
+        .accessibilityLabel(L10n.a11yEditorMenuLabel)
+        .accessibilityHint(L10n.a11yEditorMenuHint)
+        .accessibilityIdentifier("editor.more-menu")
     }
 
     private var editorChrome: some View {
@@ -274,6 +309,9 @@ struct DocumentEditorView: View {
                     Button(action: shareButtonAction) {
                         Image(systemName: "square.and.arrow.up")
                     }
+                    .accessibilityLabel(Text(shareButtonLabel))
+                    .accessibilityHint(L10n.a11yEditorShareHint)
+                    .accessibilityIdentifier("editor.share")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     toolbarMenu
@@ -343,6 +381,46 @@ struct DocumentEditorView: View {
                     pumpPendingInsertionsIfNeeded()
                 }
             }
+            .onChange(of: selectedTab) { _, _ in
+                InteractionFeedback.selection()
+            }
+            .onChange(of: exporter.exportURL) { _, newValue in
+                guard newValue != nil else { return }
+                InteractionFeedback.notify(.success)
+                AccessibilitySupport.announce(L10n.a11yExportReady)
+            }
+            .onChange(of: exporter.exportError) { _, newValue in
+                guard newValue != nil else { return }
+                InteractionFeedback.notify(.error)
+                AccessibilitySupport.announce(newValue)
+            }
+            .onChange(of: imageImportError) { _, newValue in
+                guard newValue != nil else { return }
+                InteractionFeedback.notify(.error)
+                AccessibilitySupport.announce(newValue)
+            }
+            .onChange(of: fileSaveError) { _, newValue in
+                guard newValue != nil else { return }
+                InteractionFeedback.notify(.error)
+                AccessibilitySupport.announce(newValue)
+            }
+            .onChange(of: previewActionError) { _, newValue in
+                guard newValue != nil else { return }
+                InteractionFeedback.notify(.error)
+                AccessibilitySupport.announce(newValue)
+            }
+            .onChange(of: compiler.pdfDocument) { _, newValue in
+                guard pendingManualCompileFeedback, newValue != nil, compiler.errorMessage == nil else { return }
+                pendingManualCompileFeedback = false
+                InteractionFeedback.notify(.success)
+                AccessibilitySupport.announce(L10n.a11yCompileSuccess)
+            }
+            .onChange(of: compiler.errorMessage) { _, newValue in
+                guard pendingManualCompileFeedback, newValue != nil else { return }
+                pendingManualCompileFeedback = false
+                InteractionFeedback.notify(.error)
+                AccessibilitySupport.announce(L10n.a11yCompileFailed)
+            }
     }
 
     private var editorOverlaysAndAlerts: some View {
@@ -369,6 +447,8 @@ struct DocumentEditorView: View {
                         .systemFloatingSurface(cornerRadius: 999)
                         .padding(.bottom, 18)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(toast)
                 }
             }
             .sheet(item: $exporter.exportURL) { url in ActivityView(activityItems: [url]) }
@@ -424,6 +504,12 @@ struct DocumentEditorView: View {
 
     var body: some View {
         editorOverlaysAndAlerts
+    }
+
+    private var splitHandleAccessibilityValue: String {
+        let editorPercent = Int((editorFraction * 100).rounded())
+        let previewPercent = max(0, 100 - editorPercent)
+        return L10n.a11yEditorSplitValue(editorPercent: editorPercent, previewPercent: previewPercent)
     }
 
     // MARK: - File operations
@@ -572,15 +658,20 @@ struct DocumentEditorView: View {
     func openFile(named name: String) {
         flushPendingSave()
         loadFile(named: name)
+        InteractionFeedback.selection()
     }
 
     private func compilePreviewNow() {
         flushPendingSave()
+        pendingManualCompileFeedback = true
         compiler.compileNow(source: entrySource, fontPaths: compileFontPaths, rootDir: rootDir)
     }
 
     private func clearCachesAndRecompile() {
         flushPendingSave()
+        pendingManualCompileFeedback = true
+        InteractionFeedback.notify(.warning)
+        AccessibilitySupport.announce(L10n.a11yCacheRefreshStarted)
         let source = entrySource
         let fontPaths = compileFontPaths
         let rootDir = rootDir
@@ -879,6 +970,8 @@ struct DocumentEditorView: View {
     @MainActor
     private func showImageImportToast(_ message: String) {
         toastDismissTask?.cancel()
+        InteractionFeedback.notify(.success)
+        AccessibilitySupport.announce(message)
         withAnimation(.easeInOut(duration: 0.18)) {
             imageImportToast = message
         }

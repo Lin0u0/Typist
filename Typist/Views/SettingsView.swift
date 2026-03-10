@@ -45,6 +45,7 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                        .accessibilityIdentifier("settings.done")
                 }
             }
             .fileImporter(isPresented: $showingZipImporter, allowedContentTypes: [.zip]) { result in
@@ -76,6 +77,7 @@ struct SettingsView: View {
                     .frame(width: 88, height: 88)
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
+                    .accessibilityHidden(true)
                 Text("Typist")
                     .font(.title2.bold())
                 Text(versionString)
@@ -89,6 +91,11 @@ struct SettingsView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 20)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(L10n.a11ySettingsHeaderLabel)
+            .accessibilityValue(
+                L10n.a11ySettingsHeaderValue(version: versionString, typstVersion: typstVersionString)
+            )
         }
         .listRowBackground(Color.clear)
     }
@@ -148,6 +155,7 @@ struct SettingsView: View {
                 Label("Import ZIP", systemImage: "square.and.arrow.down")
                     .foregroundStyle(.primary)
             }
+            .accessibilityIdentifier("settings.import-zip")
         }
     }
 
@@ -168,6 +176,7 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .accessibilityIdentifier("settings.fonts")
         }
     }
 
@@ -179,6 +188,7 @@ struct SettingsView: View {
                 Label("Manage Package Cache", systemImage: "externaldrive.badge.person.crop")
                     .foregroundStyle(.primary)
             }
+            .accessibilityIdentifier("settings.cache")
         }
     }
 
@@ -189,6 +199,7 @@ struct SettingsView: View {
             } label: {
                 Text("Acknowledgements")
             }
+            .accessibilityIdentifier("settings.acknowledgements")
         }
     }
 }

@@ -6,27 +6,31 @@
 import UIKit
 
 final class KeyboardAccessoryView: UIInputView {
+    private struct SymbolItem {
+        let label: String
+        let insert: String
+    }
 
     private weak var textView: UITextView?
     var onPhotoButtonTapped: (() -> Void)?
 
-    private let symbols: [(label: String, insert: String)] = [
-        ("⇥", "  "),
-        ("#", "#"),
-        ("$", "$"),
-        ("=", "="),
-        ("*", "*"),
-        ("_", "_"),
-        ("{", "{"),
-        ("}", "}"),
-        ("[", "["),
-        ("]", "]"),
-        ("(", "("),
-        (")", ")"),
-        ("<", "<"),
-        (">", ">"),
-        ("@", "@"),
-        ("/", "/"),
+    private let symbols: [SymbolItem] = [
+        SymbolItem(label: "⇥", insert: "  "),
+        SymbolItem(label: "#", insert: "#"),
+        SymbolItem(label: "$", insert: "$"),
+        SymbolItem(label: "=", insert: "="),
+        SymbolItem(label: "*", insert: "*"),
+        SymbolItem(label: "_", insert: "_"),
+        SymbolItem(label: "{", insert: "{"),
+        SymbolItem(label: "}", insert: "}"),
+        SymbolItem(label: "[", insert: "["),
+        SymbolItem(label: "]", insert: "]"),
+        SymbolItem(label: "(", insert: "("),
+        SymbolItem(label: ")", insert: ")"),
+        SymbolItem(label: "<", insert: "<"),
+        SymbolItem(label: ">", insert: ">"),
+        SymbolItem(label: "@", insert: "@"),
+        SymbolItem(label: "/", insert: "/"),
     ]
 
     init(textView: UITextView) {
@@ -55,6 +59,8 @@ final class KeyboardAccessoryView: UIInputView {
             let button = makeButton(title: symbol.label) { [weak self] in
                 self?.textView?.insertText(symbol.insert)
             }
+            button.accessibilityLabel = L10n.keyboardSymbolAccessibilityLabel(for: symbol.label)
+            button.accessibilityHint = L10n.a11yKeyboardInsertHint
             stackView.addArrangedSubview(button)
         }
 
@@ -75,6 +81,12 @@ final class KeyboardAccessoryView: UIInputView {
         let redoButton = makeButton(systemImage: "arrow.uturn.forward") { [weak self] in
             self?.textView?.undoManager?.redo()
         }
+        photoButton.accessibilityLabel = L10n.a11yKeyboardPhotoLabel
+        photoButton.accessibilityHint = L10n.a11yKeyboardPhotoHint
+        undoButton.accessibilityLabel = L10n.a11yKeyboardUndoLabel
+        undoButton.accessibilityHint = L10n.a11yKeyboardUndoHint
+        redoButton.accessibilityLabel = L10n.a11yKeyboardRedoLabel
+        redoButton.accessibilityHint = L10n.a11yKeyboardRedoHint
 
         let rightStack = UIStackView(arrangedSubviews: [photoButton, undoButton, redoButton])
         rightStack.axis = .horizontal
@@ -117,7 +129,9 @@ final class KeyboardAccessoryView: UIInputView {
             config.title = title
             config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
                 var attrs = incoming
-                attrs.font = UIFont.monospacedSystemFont(ofSize: 16, weight: .regular)
+                attrs.font = UIFontMetrics(forTextStyle: .body).scaledFont(
+                    for: UIFont.monospacedSystemFont(ofSize: 16, weight: .regular)
+                )
                 return attrs
             }
         }
@@ -129,7 +143,8 @@ final class KeyboardAccessoryView: UIInputView {
 
         let button = UIButton(configuration: config, primaryAction: UIAction { _ in action() })
         button.translatesAutoresizingMaskIntoConstraints = false
-        button.widthAnchor.constraint(greaterThanOrEqualToConstant: 36).isActive = true
+        button.widthAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+        button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         return button
     }
 }

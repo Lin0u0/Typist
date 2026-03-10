@@ -55,10 +55,14 @@ struct ProjectFileBrowserSheet: View {
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button {
+                        InteractionFeedback.impact(.light)
                         showingProjectSettings = true
                     } label: {
                         Image(systemName: "gearshape")
                     }
+                    .accessibilityLabel(L10n.a11yProjectFilesSettingsLabel)
+                    .accessibilityHint(L10n.a11yProjectFilesSettingsHint)
+                    .accessibilityIdentifier("project-files.settings")
 
                     Menu {
                         Button {
@@ -75,6 +79,9 @@ struct ProjectFileBrowserSheet: View {
                     } label: {
                         Image(systemName: "plus")
                     }
+                    .accessibilityLabel(L10n.a11yProjectFilesAddLabel)
+                    .accessibilityHint(L10n.a11yProjectFilesAddHint)
+                    .accessibilityIdentifier("project-files.add-menu")
                 }
             }
             .alert("New Source File", isPresented: $showingNewFileAlert) {
@@ -110,9 +117,14 @@ struct ProjectFileBrowserSheet: View {
         }
         .presentationDetents([.medium, .large])
         .onAppear { refreshProjectState() }
-        .onChange(of: document.imageDirectoryName) { _, _ in
-            refreshProjectState()
-        }
+            .onChange(of: document.imageDirectoryName) { _, _ in
+                refreshProjectState()
+            }
+            .onChange(of: actionError) { _, newValue in
+                guard newValue != nil else { return }
+                InteractionFeedback.notify(.error)
+                AccessibilitySupport.announce(newValue)
+            }
         .sheet(isPresented: $showingProjectSettings, onDismiss: refreshProjectState) {
             ProjectSettingsSheet(document: document, openFile: openFile)
         }
@@ -127,7 +139,13 @@ struct ProjectFileBrowserSheet: View {
                 rowLabel(for: row)
             }
             .buttonStyle(ProjectFileRowButtonStyle())
-            .contentShape(Rectangle()))
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(rowAccessibilityLabel(for: row))
+            .accessibilityHint(L10n.a11yProjectFilesExpandHint)
+            .accessibilityValue(rowAccessibilityValue(for: row))
+            .accessibilityIdentifier("project-files.row.\(node.relativePath)")
+            .accessibilityAddTraits(.isButton))
         } else if node.kind == .typ {
             return AnyView(Button {
                 openFile(node.relativePath)
@@ -144,6 +162,14 @@ struct ProjectFileBrowserSheet: View {
                     Label("Delete", systemImage: "trash")
                 }
                 .disabled(node.relativePath == document.entryFileName)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(rowAccessibilityLabel(for: row))
+            .accessibilityHint(L10n.a11yProjectFilesOpenHint)
+            .accessibilityValue(rowAccessibilityValue(for: row))
+            .accessibilityIdentifier("project-files.row.\(node.relativePath)")
+            .accessibilityAction(named: Text(L10n.tr("Delete"))) {
+                deleteTypFile(node.relativePath)
             })
         } else if node.kind == .image {
             return AnyView(Button {
@@ -159,6 +185,14 @@ struct ProjectFileBrowserSheet: View {
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(rowAccessibilityLabel(for: row))
+            .accessibilityHint(L10n.a11yProjectFilesPreviewHint)
+            .accessibilityValue(rowAccessibilityValue(for: row))
+            .accessibilityIdentifier("project-files.row.\(node.relativePath)")
+            .accessibilityAction(named: Text(L10n.tr("Delete"))) {
+                deleteFile(at: node.relativePath, kind: node.kind)
             })
         } else {
             return AnyView(rowLabel(for: row)
@@ -168,6 +202,14 @@ struct ProjectFileBrowserSheet: View {
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(rowAccessibilityLabel(for: row))
+                .accessibilityHint(L10n.a11yProjectFilesPreviewHint)
+                .accessibilityValue(rowAccessibilityValue(for: row))
+                .accessibilityIdentifier("project-files.row.\(node.relativePath)")
+                .accessibilityAction(named: Text(L10n.tr("Delete"))) {
+                    deleteFile(at: node.relativePath, kind: node.kind)
                 })
         }
     }
@@ -247,6 +289,7 @@ struct ProjectFileBrowserSheet: View {
     }
 
     private func toggleExpansion(for path: String) {
+        InteractionFeedback.selection()
         withAnimation(.snappy(duration: 0.22, extraBounce: 0.03)) {
             if expandedNodes.contains(path) {
                 expandedNodes.remove(path)
@@ -270,6 +313,7 @@ struct ProjectFileBrowserSheet: View {
             try ProjectFileManager.createTypFile(named: name, for: document)
             refreshProjectState()
             openFile(name)
+            InteractionFeedback.notify(.success)
             dismiss()
         } catch {
             present(error)
@@ -280,6 +324,7 @@ struct ProjectFileBrowserSheet: View {
         do {
             try ProjectFileManager.deleteTypFile(named: path, for: document)
             refreshProjectState()
+            InteractionFeedback.notify(.warning)
         } catch {
             present(error)
         }
@@ -292,6 +337,7 @@ struct ProjectFileBrowserSheet: View {
                 document.fontFileNames.removeAll { $0 == (relativePath as NSString).lastPathComponent }
             }
             refreshProjectState()
+            InteractionFeedback.notify(.warning)
         } catch {
             present(error)
         }
@@ -309,6 +355,7 @@ struct ProjectFileBrowserSheet: View {
             withAnimation(.snappy(duration: 0.32, extraBounce: 0.04)) {
                 previewItem = item
             }
+            InteractionFeedback.impact(.light)
             resolvePreviewAspectRatioIfNeeded(for: relativePath, url: url)
         } catch {
             present(error)
@@ -366,6 +413,7 @@ struct ProjectFileBrowserSheet: View {
             }
         }
         refreshProjectState()
+        InteractionFeedback.notify(.success)
         if let firstError {
             present(firstError)
         }
@@ -374,6 +422,43 @@ struct ProjectFileBrowserSheet: View {
     private func present(_ error: Error) {
         actionError = error.localizedDescription
         showingActionError = true
+    }
+
+    private func rowAccessibilityLabel(for row: VisibleProjectRow) -> String {
+        let node = row.node
+        if node.isDirectory {
+            return L10n.a11yProjectFilesFolderLabel(node.displayName)
+        }
+        return L10n.a11yProjectFilesFileLabel(kind: accessibilityKindLabel(for: node.kind), name: node.displayName)
+    }
+
+    private func rowAccessibilityValue(for row: VisibleProjectRow) -> String {
+        var values: [String] = []
+        if row.node.isDirectory {
+            values.append(row.isExpanded ? L10n.a11yStateExpanded : L10n.a11yStateCollapsed)
+        }
+        if row.node.relativePath == document.entryFileName {
+            values.append(L10n.tr("Entry"))
+        }
+        if row.node.relativePath == currentFileName {
+            values.append(L10n.tr("Editing"))
+        }
+        return values.joined(separator: ", ")
+    }
+
+    private func accessibilityKindLabel(for kind: ProjectTreeNode.Kind) -> String {
+        switch kind {
+        case .directory:
+            return L10n.tr("a11y.project_files.kind.folder")
+        case .typ:
+            return L10n.tr("a11y.project_files.kind.typ")
+        case .image:
+            return L10n.tr("a11y.project_files.kind.image")
+        case .font:
+            return L10n.tr("a11y.project_files.kind.font")
+        case .other:
+            return L10n.tr("a11y.project_files.kind.file")
+        }
     }
 
     fileprivate struct PreviewItem: Identifiable, Equatable {
@@ -532,7 +617,8 @@ private struct PreviewCloseButton: View {
                 .glassEffect(.regular.interactive(), in: .circle)
                 .clipShape(Circle())
             }
-            .accessibilityLabel("Close Preview")
+            .accessibilityLabel(L10n.a11yClosePreview)
+            .accessibilityIdentifier("project-files.preview.close")
         } else {
             Button(action: action) {
                 Image(systemName: "xmark")
@@ -543,7 +629,8 @@ private struct PreviewCloseButton: View {
                     .overlay(Circle().strokeBorder(.quaternary, lineWidth: 1))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Close Preview")
+            .accessibilityLabel(L10n.a11yClosePreview)
+            .accessibilityIdentifier("project-files.preview.close")
         }
     }
 }

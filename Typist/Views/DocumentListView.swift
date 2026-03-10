@@ -103,6 +103,16 @@ struct DocumentListView: View {
                 }
             }
             .sheet(item: $exporter.exportURL) { ActivityView(activityItems: [$0]) }
+            .onChange(of: exporter.exportURL) { _, newValue in
+                guard newValue != nil else { return }
+                InteractionFeedback.notify(.success)
+                AccessibilitySupport.announce(L10n.a11yExportReady)
+            }
+            .onChange(of: exporter.exportError) { _, newValue in
+                guard newValue != nil else { return }
+                InteractionFeedback.notify(.error)
+                AccessibilitySupport.announce(newValue)
+            }
             .alert("Export Error", isPresented: Binding(
                 get: { exporter.exportError != nil },
                 set: { if !$0 { exporter.exportError = nil } }
@@ -167,6 +177,10 @@ struct DocumentListView: View {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { scheduleFilesystemSync(delay: .milliseconds(100)) }
             }
+            .onChange(of: selectedDocument?.persistentModelID) { _, newValue in
+                guard newValue != nil else { return }
+                InteractionFeedback.selection()
+            }
             .alert("Import Error", isPresented: Binding(
                 get: { zipImportError != nil },
                 set: { if !$0 { zipImportError = nil } }
@@ -174,6 +188,16 @@ struct DocumentListView: View {
                 Button("OK") { zipImportError = nil }
             } message: {
                 Text(zipImportError ?? "")
+            }
+            .onChange(of: projectActionError) { _, newValue in
+                guard newValue != nil else { return }
+                InteractionFeedback.notify(.error)
+                AccessibilitySupport.announce(newValue)
+            }
+            .onChange(of: zipImportError) { _, newValue in
+                guard newValue != nil else { return }
+                InteractionFeedback.notify(.error)
+                AccessibilitySupport.announce(newValue)
             }
     }
 
@@ -223,6 +247,31 @@ struct DocumentListView: View {
             .padding(.vertical, 4)
             .padding(.horizontal, 6)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            L10n.a11yDocumentRowLabel(
+                title: document.title,
+                createdAt: document.createdAt.formatted(rowDateFormat),
+                modifiedAt: document.modifiedAt.formatted(rowDateFormat)
+            )
+        )
+        .accessibilityHint(L10n.a11yDocumentRowHint)
+        .accessibilityValue(selectedDocument == document ? L10n.tr("a11y.state.selected") : "")
+        .accessibilityIdentifier("document-list.row.\(document.projectID)")
+        .accessibilityAction(named: Text(L10n.tr("a11y.document_row.action.rename"))) {
+            renamingDocument = document
+            newTitle = document.title
+        }
+        .accessibilityAction(named: Text(L10n.tr("a11y.document_row.action.share_pdf"))) {
+            exporter.exportPDF(for: document)
+        }
+        .accessibilityAction(named: Text(L10n.tr("a11y.document_row.action.export_source"))) {
+            exporter.exportTypSource(for: document, fileName: document.entryFileName)
+        }
+        .accessibilityAction(named: Text(L10n.tr("a11y.document_row.action.delete"))) {
+            InteractionFeedback.notify(.warning)
+            documentToDelete = document
+        }
         .contextMenu {
             Button {
                 renamingDocument = document
@@ -243,6 +292,7 @@ struct DocumentListView: View {
             }
             Divider()
             Button(role: .destructive) {
+                InteractionFeedback.notify(.warning)
                 documentToDelete = document
             } label: {
                 Label("Delete", systemImage: "trash")
@@ -265,10 +315,16 @@ struct DocumentListView: View {
     @ToolbarContentBuilder
     private var iPadToolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
-            Button { showingSettings = true } label: {
+            Button {
+                InteractionFeedback.impact(.light)
+                showingSettings = true
+            } label: {
                 Image(systemName: "gearshape")
                     .scaleEffect(0.8)
             }
+            .accessibilityLabel(L10n.a11yDocumentListSettingsLabel)
+            .accessibilityHint(L10n.a11yDocumentListSettingsHint)
+            .accessibilityIdentifier("document-list.settings")
         }
         ToolbarItem(placement: .primaryAction) {
             sortMenu
@@ -278,6 +334,9 @@ struct DocumentListView: View {
                 Image(systemName: "folder.badge.plus")
                     .scaleEffect(0.8)
             }
+            .accessibilityLabel(L10n.a11yDocumentListAddLabel)
+            .accessibilityHint(L10n.a11yDocumentListAddHint)
+            .accessibilityIdentifier("document-list.add")
         }
     }
 
@@ -292,20 +351,30 @@ struct DocumentListView: View {
             ToolbarSpacer(.flexible, placement: .bottomBar)
         }
         ToolbarItem(placement: .bottomBar) {
-            Button { showingSettings = true } label: {
+            Button {
+                InteractionFeedback.impact(.light)
+                showingSettings = true
+            } label: {
                 Image(systemName: "gearshape")
             }
+            .accessibilityLabel(L10n.a11yDocumentListSettingsLabel)
+            .accessibilityHint(L10n.a11yDocumentListSettingsHint)
+            .accessibilityIdentifier("document-list.settings")
         }
         if #available(iOS 26, *) {
             ToolbarSpacer(.flexible, placement: .bottomBar)
         }
         ToolbarItem(placement: .bottomBar) {
             Button(action: addDocument) { Image(systemName: "folder.badge.plus") }
+                .accessibilityLabel(L10n.a11yDocumentListAddLabel)
+                .accessibilityHint(L10n.a11yDocumentListAddHint)
+                .accessibilityIdentifier("document-list.add")
         }
     }
 
     private var sortMenu: some View {
         Button {
+            InteractionFeedback.impact(.light)
             showingSortPopover = true
         } label: {
             Image(systemName: "arrow.up.arrow.down")
@@ -313,7 +382,8 @@ struct DocumentListView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(L10n.tr("sort.menu.button"))
-        .accessibilityValue("\(sortField.label), \(sortDirection.label)")
+        .accessibilityValue(L10n.a11ySortValue(field: sortField.label, direction: sortDirection.label))
+        .accessibilityIdentifier("document-list.sort")
         .popover(
             isPresented: $showingSortPopover,
             attachmentAnchor: .point(.bottom),
@@ -367,6 +437,12 @@ struct DocumentListView: View {
         Button {
             action()
             showingSortPopover = false
+            InteractionFeedback.selection()
+            AccessibilitySupport.announce(
+                L10n.a11ySortChanged(
+                    L10n.a11ySortValue(field: sortField.label, direction: sortDirection.label)
+                )
+            )
         } label: {
             HStack(spacing: 12) {
                 Text(title)
@@ -514,6 +590,8 @@ struct DocumentListView: View {
             return
         }
         selectedDocument = doc
+        InteractionFeedback.notify(.success)
+        AccessibilitySupport.announce(L10n.a11yDocumentCreated(title))
     }
 
     private func importZip(from url: URL) {
@@ -531,6 +609,8 @@ struct DocumentListView: View {
             configureImportedDocument(doc, relativePaths: extracted)
             modelContext.insert(doc)
             selectedDocument = doc
+            InteractionFeedback.notify(.success)
+            AccessibilitySupport.announce(L10n.a11yDocumentImported(title))
         } catch {
             try? ProjectFileManager.deleteProjectDirectory(for: doc)
             zipImportError = error.localizedDescription

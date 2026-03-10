@@ -25,12 +25,17 @@ struct EditorView: UIViewRepresentable {
         context.coordinator.textView = textView
         focusCoordinator?.register(textView)
         textView.applyTheme(theme)
+        textView.accessibilityLabel = L10n.a11yEditorLabel
+        textView.accessibilityHint = L10n.a11yEditorHint
+        textView.accessibilityIdentifier = "editor.text-view"
         return textView
     }
 
     func updateUIView(_ textView: TypstTextView, context: Context) {
         focusCoordinator?.register(textView)
         textView.applyTheme(theme)
+        textView.accessibilityLabel = L10n.a11yEditorLabel
+        textView.accessibilityHint = L10n.a11yEditorHint
         textView.onPhotoButtonTapped = onPhotoTapped
         textView.onImagePasted = onImagePasted
         textView.onRichPaste = onRichPaste

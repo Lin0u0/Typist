@@ -81,10 +81,15 @@ final class TypstTextView: UITextView {
         spellCheckingType = .no
         backgroundColor = .clear
         textColor = .label
+        accessibilityTraits.insert(.allowsDirectInteraction)
+        accessibilityLabel = L10n.a11yEditorLabel
+        accessibilityHint = L10n.a11yEditorHint
     }
 
     private func setupGutter() {
         gutterView = LineNumberGutterView(textView: self)
+        gutterView.isAccessibilityElement = false
+        gutterView.accessibilityElementsHidden = true
         addSubview(gutterView)
         updateGutterLayout()
     }
