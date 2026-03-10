@@ -58,7 +58,7 @@ struct EditorView: UIViewRepresentable {
         guard !textView.isFirstResponder else { return }
         guard textView.text != text else { return }
         textView.text = text
-        textView.applyHighlighting()
+        textView.scheduleHighlighting(.immediate, textChanged: true)
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
@@ -79,21 +79,20 @@ struct EditorView: UIViewRepresentable {
             textView.undoManager?.registerUndo(withTarget: textView) { tv in
                 tv.textStorage.replaceCharacters(in: insertedRange, with: originalContent)
                 tv.selectedRange = selectedRange
-                tv.applyHighlighting()
                 tv.delegate?.textViewDidChange?(tv)
             }
             textView.undoManager?.setActionName(L10n.tr("action.insert_image"))
 
             textView.textStorage.replaceCharacters(in: selectedRange, with: text)
             textView.selectedRange = NSRange(location: selectedRange.location + insertedRange.length, length: 0)
-            textView.applyHighlighting()
             parent.text = textView.text
+            textView.scheduleHighlighting(.immediate, textChanged: true)
         }
 
         func textViewDidChange(_ textView: UITextView) {
             guard let typstTextView = textView as? TypstTextView else { return }
             parent.text = textView.text
-            typstTextView.applyHighlighting()
+            typstTextView.scheduleHighlighting(.debounced, textChanged: true)
         }
     }
 }

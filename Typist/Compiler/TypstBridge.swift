@@ -6,7 +6,7 @@
 import Foundation
 import os.log
 
-enum TypstBridgeError: Error, LocalizedError {
+enum TypstBridgeError: Error, LocalizedError, Sendable {
     case compilerNotLinked
     case compilationFailed(String)
 

@@ -20,6 +20,18 @@ const EXTRA_FONT_CACHE_LIMIT: usize = 16;
 static BUNDLED_FONT_FACES: OnceLock<Arc<Vec<Font>>> = OnceLock::new();
 static EXTRA_FONT_FACES_CACHE: OnceLock<Mutex<HashMap<String, Arc<Vec<Font>>>>> = OnceLock::new();
 
+#[cfg(debug_assertions)]
+macro_rules! debug_log {
+    ($($arg:tt)*) => {
+        eprintln!($($arg)*);
+    };
+}
+
+#[cfg(not(debug_assertions))]
+macro_rules! debug_log {
+    ($($arg:tt)*) => {};
+}
+
 // ---------------------------------------------------------------------------
 // C FFI — options struct
 // ---------------------------------------------------------------------------
@@ -77,7 +89,7 @@ impl SimpleWorld {
         }
 
         let bundled_count = fonts.len();
-        eprintln!("[typst-ffi] bundled fonts: {}", bundled_count);
+        debug_log!("[typst-ffi] bundled fonts: {}", bundled_count);
 
         let mut pkg_cache_root: Option<PathBuf> = None;
         let mut root_dir: Option<PathBuf> = None;
@@ -86,7 +98,7 @@ impl SimpleWorld {
         if !options.is_null() {
             let opts = &*options;
 
-            eprintln!("[typst-ffi] font_path_count from Swift: {}", opts.font_path_count);
+            debug_log!("[typst-ffi] font_path_count from Swift: {}", opts.font_path_count);
 
             // Gather extra font paths from Swift.
             for i in 0..opts.font_path_count {
@@ -113,7 +125,7 @@ impl SimpleWorld {
                 if let Ok(s) = CStr::from_ptr(opts.root_dir).to_str() {
                     if !s.is_empty() {
                         root_dir = Some(PathBuf::from(s));
-                        eprintln!("[typst-ffi] root_dir: {}", s);
+                        debug_log!("[typst-ffi] root_dir: {}", s);
                     }
                 }
             }
@@ -126,7 +138,7 @@ impl SimpleWorld {
                 book.push(font.info().clone());
                 fonts.push(font);
             }
-            eprintln!(
+            debug_log!(
                 "[typst-ffi] loaded {} extra font faces (cache key paths: {})",
                 extra_faces.len(),
                 font_paths.len()
@@ -244,12 +256,12 @@ fn extra_font_faces(paths: &[String]) -> Arc<Vec<Font>> {
                 }
             }
             Err(e) => {
-                eprintln!("[typst-ffi] FAILED to read font: {} — {}", path, e);
+                debug_log!("[typst-ffi] FAILED to read font: {} — {}", path, e);
                 failed += 1;
             }
         }
     }
-    eprintln!(
+    debug_log!(
         "[typst-ffi] extra font cache miss: {} faces, {} files failed",
         faces.len(),
         failed

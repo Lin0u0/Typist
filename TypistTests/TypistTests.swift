@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import PDFKit
 import Testing
 @testable import Typist
 
@@ -211,6 +212,99 @@ struct TypistTests {
 
         #expect(relativePath == "cover.png")
         #expect(FileManager.default.fileExists(atPath: ProjectFileManager.projectDirectory(for: doc).appendingPathComponent("cover.png").path))
+    }
+
+    @MainActor
+    @Test func highlightSchedulerCoalescesBurstUpdates() async {
+        let counter = LockedCounter()
+        let scheduler = HighlightScheduler(sleep: { _ in }) {
+            counter.increment()
+        }
+
+        scheduler.schedule(.debounced)
+        scheduler.schedule(.debounced)
+        scheduler.schedule(.debounced)
+
+        await waitUntil {
+            counter.value == 1
+        }
+        #expect(counter.value == 1)
+    }
+
+    @MainActor
+    @Test func highlightSchedulerImmediateUpdateCancelsPendingDebounce() async {
+        let counter = LockedCounter()
+        let scheduler = HighlightScheduler(
+            sleep: { _ in try await Task.sleep(for: .seconds(1)) }
+        ) {
+            counter.increment()
+        }
+
+        scheduler.schedule(.debounced)
+        scheduler.schedule(.immediate)
+
+        await waitUntil {
+            counter.value == 1
+        }
+        #expect(counter.value == 1)
+    }
+
+    @MainActor
+    @Test func typstCompilerDropsIntermediateDebouncedRequests() async {
+        let probe = CompileProbe()
+        probe.block("first")
+
+        let compiler = TypstCompiler(
+            compileWorker: { source, _, _ in probe.compile(source: source) },
+            documentBuilder: { _ in PDFDocument() },
+            sleep: { _ in }
+        )
+
+        compiler.compile(source: "first", fontPaths: [], rootDir: nil)
+        await waitUntil {
+            probe.startedSources == ["first"]
+        }
+
+        compiler.compile(source: "second", fontPaths: [], rootDir: nil)
+        compiler.compile(source: "third", fontPaths: [], rootDir: nil)
+
+        probe.release("first")
+
+        await waitUntil {
+            probe.startedSources.count == 2 && !compiler.isCompiling
+        }
+
+        #expect(probe.startedSources == ["first", "third"])
+        #expect(probe.maxConcurrent == 1)
+    }
+
+    @MainActor
+    @Test func typstCompilerCompileNowReplacesPendingRequestWithoutParallelism() async {
+        let probe = CompileProbe()
+        probe.block("first")
+
+        let compiler = TypstCompiler(
+            compileWorker: { source, _, _ in probe.compile(source: source) },
+            documentBuilder: { _ in PDFDocument() },
+            sleep: { _ in }
+        )
+
+        compiler.compileNow(source: "first", fontPaths: [], rootDir: nil)
+        await waitUntil {
+            probe.startedSources == ["first"]
+        }
+
+        compiler.compile(source: "second", fontPaths: [], rootDir: nil)
+        compiler.compileNow(source: "third", fontPaths: [], rootDir: nil)
+
+        probe.release("first")
+
+        await waitUntil {
+            probe.startedSources.count == 2 && !compiler.isCompiling
+        }
+
+        #expect(probe.startedSources == ["first", "third"])
+        #expect(probe.maxConcurrent == 1)
     }
 
     @Test func appFontLibraryImportsDeletesAndReloadsCustomFonts() throws {
@@ -461,6 +555,77 @@ struct TypistTests {
         return localSection + centralSection + eocd
     }
 
+    @MainActor
+    private func waitUntil(
+        timeout: Duration = .seconds(2),
+        pollInterval: Duration = .milliseconds(10),
+        condition: @escaping () -> Bool
+    ) async {
+        let deadline = ContinuousClock.now + timeout
+        while !condition() && ContinuousClock.now < deadline {
+            try? await Task.sleep(for: pollInterval)
+        }
+    }
+
+}
+
+private final class LockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = 0
+
+    var value: Int {
+        lock.withLock { storage }
+    }
+
+    func increment() {
+        lock.withLock {
+            storage += 1
+        }
+    }
+}
+
+private final class CompileProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var started: [String] = []
+    private var blockers: [String: DispatchSemaphore] = [:]
+    private var activeCount = 0
+    private var maxActiveCount = 0
+
+    var startedSources: [String] {
+        lock.withLock { started }
+    }
+
+    var maxConcurrent: Int {
+        lock.withLock { maxActiveCount }
+    }
+
+    func block(_ source: String) {
+        lock.withLock {
+            blockers[source] = DispatchSemaphore(value: 0)
+        }
+    }
+
+    func release(_ source: String) {
+        lock.withLock {
+            blockers.removeValue(forKey: source)?.signal()
+        }
+    }
+
+    func compile(source: String) -> Result<Data, TypstBridgeError> {
+        let blocker = lock.withLock { () -> DispatchSemaphore? in
+            started.append(source)
+            activeCount += 1
+            maxActiveCount = max(maxActiveCount, activeCount)
+            return blockers[source]
+        }
+
+        blocker?.wait()
+
+        lock.withLock {
+            activeCount -= 1
+        }
+        return .success(Data(source.utf8))
+    }
 }
 
 private extension Data {
@@ -474,5 +639,13 @@ private extension Data {
         append(UInt8((value >> 8) & 0xFF))
         append(UInt8((value >> 16) & 0xFF))
         append(UInt8((value >> 24) & 0xFF))
+    }
+}
+
+private extension NSLock {
+    func withLock<T>(_ body: () -> T) -> T {
+        lock()
+        defer { unlock() }
+        return body()
     }
 }

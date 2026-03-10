@@ -7,17 +7,18 @@ import Foundation
 import os.log
 
 enum FontManager {
+    private static let cachedBundledCJKFontPaths: [String] = [
+        Bundle.main.path(forResource: "SourceHanSansSC-Regular", ofType: "otf"),
+        Bundle.main.path(forResource: "SourceHanSerifSC-Regular", ofType: "otf"),
+        Bundle.main.path(forResource: "SourceHanSansSC-Bold", ofType: "otf"),
+        Bundle.main.path(forResource: "SourceHanSerifSC-Bold", ofType: "otf"),
+    ].compactMap { $0 }
 
     // MARK: - Bundled fonts
 
     /// Paths to bundled CJK fonts (思源黑体 + 思源宋体) used as fallbacks.
     static var bundledCJKFontPaths: [String] {
-        [
-            Bundle.main.path(forResource: "SourceHanSansSC-Regular", ofType: "otf"),
-            Bundle.main.path(forResource: "SourceHanSerifSC-Regular", ofType: "otf"),
-            Bundle.main.path(forResource: "SourceHanSansSC-Bold", ofType: "otf"),
-            Bundle.main.path(forResource: "SourceHanSerifSC-Bold", ofType: "otf"),
-        ].compactMap { $0 }
+        cachedBundledCJKFontPaths
     }
 
     /// Returns the Typst-usable font family name (OTF name record #1) for a bundled font path.

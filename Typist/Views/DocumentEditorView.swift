@@ -57,6 +57,7 @@ struct DocumentEditorView: View {
     @State private var lastPersistedText: String = ""
     @State private var saveTask: Task<Void, Never>?
     @State private var backgroundFileWriter = BackgroundDocumentFileWriter()
+    @State private var compileFontPaths: [String]
 
     // MARK: - UI state
     @State private var selectedTab: Int = 0
@@ -80,9 +81,14 @@ struct DocumentEditorView: View {
     @State private var showingZipExportWarning = false
     @State private var focusCoordinator = EditorFocusCoordinator()
 
-    private var fontPaths: [String] { FontManager.allFontPaths(for: document) }
     private var rootDir: String { ProjectFileManager.projectDirectory(for: document).path }
     private var isEditingEntryFile: Bool { currentFileName == document.entryFileName }
+
+    init(document: TypistDocument, isSidebarVisible: Bool = false) {
+        self.document = document
+        self.isSidebarVisible = isSidebarVisible
+        _compileFontPaths = State(initialValue: FontManager.allFontPaths(for: document))
+    }
 
     // MARK: - Subviews
 
@@ -120,7 +126,7 @@ struct DocumentEditorView: View {
         PreviewPane(
             compiler: compiler,
             source: entrySource,
-            fontPaths: fontPaths,
+            fontPaths: compileFontPaths,
             rootDir: rootDir,
             compileToken: compileToken,
             focusCoordinator: focusCoordinator
@@ -318,6 +324,7 @@ struct DocumentEditorView: View {
                 }
             }
             .onAppear {
+                refreshCompileFontPaths()
                 prepareDocumentForEditing()
             }
             .onDisappear {
@@ -328,6 +335,12 @@ struct DocumentEditorView: View {
             .onChange(of: editorText) { _, newText in
                 guard !isLoadingFileContent else { return }
                 handleEditorTextChange(newText)
+            }
+            .onChange(of: document.fontFileNames) { _, _ in
+                handleCompileInputsChanged()
+            }
+            .onChange(of: appFontLibrary.items) { _, _ in
+                handleCompileInputsChanged()
             }
             .onChange(of: insertionRequest) { _, newValue in
                 if newValue == nil {
@@ -468,7 +481,6 @@ struct DocumentEditorView: View {
 
     private func handleEditorTextChange(_ content: String) {
         guard !currentFileName.isEmpty else { return }
-        document.modifiedAt = Date()
         if isEditingEntryFile {
             entrySource = content
         }
@@ -502,6 +514,7 @@ struct DocumentEditorView: View {
                 await MainActor.run {
                     if self.currentFileName == fileName, self.editorText == content {
                         self.lastPersistedText = content
+                        self.document.modifiedAt = Date()
                         if shouldRefreshPreviewAfterSave {
                             self.compileToken = UUID()
                         }
@@ -533,6 +546,7 @@ struct DocumentEditorView: View {
         do {
             try content.write(to: fileURL, atomically: true, encoding: .utf8)
             lastPersistedText = content
+            document.modifiedAt = Date()
             if shouldRefreshPreviewAfterSave {
                 compileToken = UUID()
             }
@@ -564,13 +578,13 @@ struct DocumentEditorView: View {
 
     private func compilePreviewNow() {
         flushPendingSave()
-        compiler.compileNow(source: entrySource, fontPaths: fontPaths, rootDir: rootDir)
+        compiler.compileNow(source: entrySource, fontPaths: compileFontPaths, rootDir: rootDir)
     }
 
     private func clearCachesAndRecompile() {
         flushPendingSave()
         let source = entrySource
-        let fontPaths = fontPaths
+        let fontPaths = compileFontPaths
         let rootDir = rootDir
 
         compiler.clearPreview()
@@ -589,6 +603,20 @@ struct DocumentEditorView: View {
                 }
             }
         }
+    }
+
+    @discardableResult
+    private func refreshCompileFontPaths() -> Bool {
+        let latestPaths = FontManager.allFontPaths(for: document)
+        guard latestPaths != compileFontPaths else { return false }
+        compileFontPaths = latestPaths
+        return true
+    }
+
+    private func handleCompileInputsChanged() {
+        guard refreshCompileFontPaths() else { return }
+        guard canTriggerPreviewActions else { return }
+        compileToken = UUID()
     }
 
     private func triggerZipExport() {

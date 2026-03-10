@@ -13,6 +13,9 @@ final class LineNumberGutterView: UIView {
     private weak var textView: UITextView?
     private var gutterBgColor: UIColor = .secondarySystemBackground
     private var gutterFgColor: UIColor = .secondaryLabel
+    private var lineStartOffsets: [Int] = [0]
+    private var cachedGutterWidth: CGFloat = LineNumberGutterView.minGutterWidth
+    private var needsLineMetricsRefresh = true
 
     init(textView: UITextView) {
         self.textView = textView
@@ -31,17 +34,19 @@ final class LineNumberGutterView: UIView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    func textDidChange() {
+        needsLineMetricsRefresh = true
+        setNeedsDisplay()
+    }
+
     var gutterWidth: CGFloat {
-        guard let textView else { return Self.minGutterWidth }
-        let lineCount = max((textView.text as NSString).components(separatedBy: "\n").count, 1)
-        let digits = String(lineCount).count
-        let sampleString = String(repeating: "8", count: max(digits, 2)) as NSString
-        let size = sampleString.size(withAttributes: [.font: Self.gutterFont])
-        return max(ceil(size.width) + 16, Self.minGutterWidth)
+        refreshLineMetricsIfNeeded()
+        return cachedGutterWidth
     }
 
     override func draw(_ rect: CGRect) {
         guard let textView else { return }
+        refreshLineMetricsIfNeeded()
 
         // Resolve dynamic UIColors against the current trait collection before converting to CGColor.
         let resolvedBg = gutterBgColor.resolvedColor(with: traitCollection)
@@ -62,10 +67,9 @@ final class LineNumberGutterView: UIView {
         let visibleCharRange = layoutManager.characterRange(forGlyphRange: visibleGlyphRange, actualGlyphRange: nil)
 
         let nsString = textView.text as NSString
-        var lineNumber = 1
-        // Count newlines before visible range to get starting line number
-        let preText = nsString.substring(to: visibleCharRange.location)
-        lineNumber += preText.components(separatedBy: "\n").count - 1
+        let firstVisibleLineIndex = lineIndex(forCharacterOffset: visibleCharRange.location)
+        var lineIndex = firstVisibleLineIndex
+        let visibleEnd = NSMaxRange(visibleCharRange)
 
         func caretRectForOffset(_ offset: Int) -> CGRect? {
             let clampedOffset = min(max(offset, 0), nsString.length)
@@ -75,23 +79,17 @@ final class LineNumberGutterView: UIView {
             return textView.caretRect(for: position)
         }
 
-        var index = visibleCharRange.location
-        while index <= NSMaxRange(visibleCharRange) {
-            let charRange: NSRange
-            if index < nsString.length {
-                charRange = nsString.lineRange(for: NSRange(location: index, length: 0))
-            } else if index == nsString.length {
-                // Handle last empty line after trailing newline
-                charRange = NSRange(location: index, length: 0)
-            } else {
+        while lineIndex < lineStartOffsets.count {
+            let offset = lineStartOffsets[lineIndex]
+            if offset > visibleEnd && lineIndex != firstVisibleLineIndex {
                 break
             }
 
-            let nextIndex = NSMaxRange(charRange)
-            guard let startCaretRect = caretRectForOffset(index) else {
+            guard let startCaretRect = caretRectForOffset(offset) else {
                 break
             }
-            let numberString = "\(lineNumber)" as NSString
+
+            let numberString = "\(lineIndex + 1)" as NSString
             let stringSize = numberString.size(withAttributes: attributes)
             let drawPoint = CGPoint(
                 x: gutterWidth - stringSize.width - 8,
@@ -99,12 +97,55 @@ final class LineNumberGutterView: UIView {
             )
             numberString.draw(at: drawPoint, withAttributes: attributes)
 
-            lineNumber += 1
+            lineIndex += 1
+        }
+    }
 
-            if nextIndex <= index {
-                break
+    private func refreshLineMetricsIfNeeded() {
+        guard needsLineMetricsRefresh, let textView else { return }
+
+        let nsString = textView.text as NSString
+        let length = nsString.length
+        var starts = [0]
+        var index = 0
+
+        while index < length {
+            let lineRange = nsString.lineRange(for: NSRange(location: index, length: 0))
+            let nextIndex = NSMaxRange(lineRange)
+            if nextIndex < length {
+                starts.append(nextIndex)
+            } else if nextIndex == length, length > 0, nsString.character(at: length - 1) == 10 {
+                starts.append(length)
             }
+
+            guard nextIndex > index else { break }
             index = nextIndex
         }
+
+        lineStartOffsets = starts
+
+        let digits = String(max(starts.count, 1)).count
+        let sampleString = String(repeating: "8", count: max(digits, 2)) as NSString
+        let size = sampleString.size(withAttributes: [.font: Self.gutterFont])
+        cachedGutterWidth = max(ceil(size.width) + 16, Self.minGutterWidth)
+        needsLineMetricsRefresh = false
+    }
+
+    private func lineIndex(forCharacterOffset offset: Int) -> Int {
+        guard !lineStartOffsets.isEmpty else { return 0 }
+
+        var lowerBound = 0
+        var upperBound = lineStartOffsets.count
+
+        while lowerBound < upperBound {
+            let mid = (lowerBound + upperBound) / 2
+            if lineStartOffsets[mid] <= offset {
+                lowerBound = mid + 1
+            } else {
+                upperBound = mid
+            }
+        }
+
+        return max(0, lowerBound - 1)
     }
 }

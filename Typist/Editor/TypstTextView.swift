@@ -3,6 +3,7 @@
 //  Typist
 //
 
+import os
 import UIKit
 import UniformTypeIdentifiers
 
@@ -14,9 +15,14 @@ final class TypstTextView: UITextView {
     }
 
     private let highlighter = SyntaxHighlighter()
+    private lazy var highlightScheduler = HighlightScheduler { [weak self] in
+        self?.applyHighlightingNow()
+    }
     private(set) var gutterView: LineNumberGutterView!
     private var storedTheme: EditorTheme = .system
     private var appearanceRegistration: (any UITraitChangeRegistration)?
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Typist", category: "EditorHighlight")
+    private static let signposter = OSSignposter(logger: logger)
 
     /// When true, `resignFirstResponder()` is refused for this editor instance.
     /// Set by PDFKitView during document reload to prevent PDFKit from
@@ -60,6 +66,10 @@ final class TypstTextView: UITextView {
         setupKeyboardAvoidance()
     }
 
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
     // MARK: - Configuration
 
     private func configureAppearance() {
@@ -99,7 +109,7 @@ final class TypstTextView: UITextView {
             [UITraitUserInterfaceStyle.self]
         ) { (view: TypstTextView, _: UITraitCollection) in
             view.typingAttributes[.foregroundColor] = view.storedTheme.text
-            view.applyHighlighting()
+            view.scheduleHighlighting(.immediate)
         }
     }
 
@@ -216,14 +226,24 @@ final class TypstTextView: UITextView {
         ]
         highlighter.updateTheme(theme)
         gutterView.applyTheme(theme)
-        applyHighlighting()
+        scheduleHighlighting(.immediate)
     }
 
     // MARK: - Highlighting
 
-    func applyHighlighting() {
+    func scheduleHighlighting(_ mode: HighlightMode, textChanged: Bool = false) {
+        if textChanged {
+            gutterView.textDidChange()
+            setNeedsLayout()
+        }
+        highlightScheduler.schedule(mode)
+    }
+
+    private func applyHighlightingNow() {
+        let interval = Self.signposter.beginInterval("editor.highlight")
         highlighter.highlight(textStorage)
         gutterView.setNeedsDisplay()
+        Self.signposter.endInterval("editor.highlight", interval)
     }
 
     // MARK: - Keyboard Avoidance
