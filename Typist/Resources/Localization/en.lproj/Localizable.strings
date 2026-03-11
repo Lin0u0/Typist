@@ -39,6 +39,7 @@
 "font.scope.built_in" = "built-in";
 "font.scope.app" = "app";
 "font.scope.project" = "project";
+"font.faces_count" = "%d faces";
 "app_fonts.export_warning.title" = "App Fonts Not Included";
 "app_fonts.export_warning.message" = "Project ZIP exports only the project directory. Imported App fonts are not bundled and must exist separately on the destination device.";
 "settings.version_format" = "Version %@ (%@)";

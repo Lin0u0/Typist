@@ -47,6 +47,7 @@ enum L10n {
     nonisolated static var fontScopeBuiltIn: String { tr("font.scope.built_in") }
     nonisolated static var fontScopeApp: String { tr("font.scope.app") }
     nonisolated static var fontScopeProject: String { tr("font.scope.project") }
+    nonisolated static func fontFacesCount(_ count: Int) -> String { format("font.faces_count", count) }
     nonisolated static var appFontsExportWarningTitle: String { tr("app_fonts.export_warning.title") }
     nonisolated static var appFontsExportWarningMessage: String { tr("app_fonts.export_warning.message") }
     nonisolated static var uiTestSampleDocumentTitle: String { tr("ui_test.sample_document_title") }

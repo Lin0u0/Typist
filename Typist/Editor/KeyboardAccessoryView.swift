@@ -57,6 +57,7 @@ final class KeyboardAccessoryView: UIInputView {
 
         for symbol in symbols {
             let button = makeButton(title: symbol.label) { [weak self] in
+                InteractionFeedback.selection()
                 self?.textView?.insertText(symbol.insert)
             }
             button.accessibilityLabel = L10n.keyboardSymbolAccessibilityLabel(for: symbol.label)
@@ -73,12 +74,15 @@ final class KeyboardAccessoryView: UIInputView {
 
         // Photo / Undo / Redo
         let photoButton = makeButton(systemImage: "photo") { [weak self] in
+            InteractionFeedback.impact(.light)
             self?.onPhotoButtonTapped?()
         }
         let undoButton = makeButton(systemImage: "arrow.uturn.backward") { [weak self] in
+            InteractionFeedback.impact(.light)
             self?.textView?.undoManager?.undo()
         }
         let redoButton = makeButton(systemImage: "arrow.uturn.forward") { [weak self] in
+            InteractionFeedback.impact(.light)
             self?.textView?.undoManager?.redo()
         }
         photoButton.accessibilityLabel = L10n.a11yKeyboardPhotoLabel

@@ -4,6 +4,9 @@
 //
 
 import Foundation
+import CoreGraphics
+import CoreText
+import UIKit
 import os.log
 
 enum FontManager {
@@ -13,6 +16,7 @@ enum FontManager {
         Bundle.main.path(forResource: "SourceHanSansSC-Bold", ofType: "otf"),
         Bundle.main.path(forResource: "SourceHanSerifSC-Bold", ofType: "otf"),
     ].compactMap { $0 }
+    private static var registeredPreviewFontPaths: Set<String> = []
 
     // MARK: - Bundled fonts
 
@@ -23,8 +27,37 @@ enum FontManager {
 
     /// Returns the Typst-usable font family name (OTF name record #1) for a bundled font path.
     static func typstFamilyName(forBundledPath path: String) -> String? {
+        fontNameRecords(forFontAtPath: path)
+            .first(where: { $0.platformID == 3 && $0.encodingID == 1 && $0.nameID == 1 })?
+            .value
+    }
+
+    static func typstFaceName(forFontAtPath path: String) -> String? {
+        fontNameRecords(forFontAtPath: path)
+            .first(where: { $0.platformID == 3 && $0.encodingID == 1 && $0.nameID == 2 })?
+            .value
+    }
+
+    static func previewUIFont(forFontAtPath path: String, size: CGFloat) -> UIFont? {
+        registerPreviewFontIfNeeded(at: path)
+
+        if let postScriptName = postScriptName(forFontAtPath: path),
+           let font = UIFont(name: postScriptName, size: size) {
+            return font
+        }
+
+        if let familyName = typstFamilyName(forBundledPath: path),
+           let fontName = UIFont.fontNames(forFamilyName: familyName).first,
+           let font = UIFont(name: fontName, size: size) {
+            return font
+        }
+
+        return nil
+    }
+
+    private static func fontNameRecords(forFontAtPath path: String) -> [FontNameRecord] {
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-              data.count > 12 else { return nil }
+              data.count > 12 else { return [] }
         // Read sfnt offset table to find the 'name' table.
         let numTables = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 4, as: UInt16.self).bigEndian }
         var nameTableOffset: Int?
@@ -39,9 +72,10 @@ enum FontManager {
                 break
             }
         }
-        guard let nOff = nameTableOffset, nOff + 6 <= data.count else { return nil }
+        guard let nOff = nameTableOffset, nOff + 6 <= data.count else { return [] }
         let count = Int(data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: nOff + 2, as: UInt16.self).bigEndian })
         let strOff = Int(data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: nOff + 4, as: UInt16.self).bigEndian })
+        var records: [FontNameRecord] = []
         for i in 0..<count {
             let rec = nOff + 6 + i * 12
             guard rec + 12 <= data.count else { break }
@@ -50,13 +84,46 @@ enum FontManager {
             let nid  = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: rec + 6, as: UInt16.self).bigEndian }
             let slen = Int(data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: rec + 8, as: UInt16.self).bigEndian })
             let soff = Int(data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: rec + 10, as: UInt16.self).bigEndian })
-            guard pid == 3, enc == 1, nid == 1 else { continue }
             let strStart = nOff + strOff + soff
             guard strStart + slen <= data.count else { continue }
             let strData = data[strStart..<strStart+slen]
-            return String(bytes: strData, encoding: .utf16BigEndian)
+            guard let value = String(bytes: strData, encoding: .utf16BigEndian) else { continue }
+            records.append(FontNameRecord(platformID: pid, encodingID: enc, nameID: nid, value: value))
         }
-        return nil
+        return records
+    }
+
+    private static func registerPreviewFontIfNeeded(at path: String) {
+        guard !registeredPreviewFontPaths.contains(path) else { return }
+
+        var error: Unmanaged<CFError>?
+        let url = URL(fileURLWithPath: path) as CFURL
+        let registered = CTFontManagerRegisterFontsForURL(url, .process, &error)
+        if registered || isAlreadyRegistered(error?.takeRetainedValue()) {
+            registeredPreviewFontPaths.insert(path)
+        }
+    }
+
+    private static func isAlreadyRegistered(_ error: CFError?) -> Bool {
+        guard let error else { return false }
+        let code = CFErrorGetCode(error)
+        return code == CTFontManagerError.alreadyRegistered.rawValue
+    }
+
+    private static func postScriptName(forFontAtPath path: String) -> String? {
+        if let record = fontNameRecords(forFontAtPath: path)
+            .first(where: { $0.platformID == 3 && $0.encodingID == 1 && $0.nameID == 6 })?
+            .value,
+           !record.isEmpty {
+            return record
+        }
+
+        guard let provider = CGDataProvider(url: URL(fileURLWithPath: path) as CFURL),
+              let cgFont = CGFont(provider),
+              let name = cgFont.postScriptName as String? else {
+            return nil
+        }
+        return name
     }
 
     // MARK: - App-level fonts
@@ -117,7 +184,8 @@ enum FontManager {
         let importedItems = appImportedFontPaths(rootURL: rootURL).map { path in
             let fileURL = URL(fileURLWithPath: path)
             return AppFontItem(
-                displayName: fileURL.lastPathComponent,
+                displayName: typstFamilyName(forBundledPath: path)
+                    ?? fileURL.deletingPathExtension().lastPathComponent,
                 path: path,
                 fileName: fileURL.lastPathComponent,
                 isBuiltIn: false
@@ -208,3 +276,9 @@ enum FontManager {
     }
 
 }
+    private struct FontNameRecord {
+        let platformID: UInt16
+        let encodingID: UInt16
+        let nameID: UInt16
+        let value: String
+    }

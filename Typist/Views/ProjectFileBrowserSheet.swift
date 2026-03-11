@@ -195,22 +195,28 @@ struct ProjectFileBrowserSheet: View {
                 deleteFile(at: node.relativePath, kind: node.kind)
             })
         } else {
-            return AnyView(rowLabel(for: row)
-                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    Button(role: .destructive) {
-                        deleteFile(at: node.relativePath, kind: node.kind)
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(rowAccessibilityLabel(for: row))
-                .accessibilityHint(L10n.a11yProjectFilesPreviewHint)
-                .accessibilityValue(rowAccessibilityValue(for: row))
-                .accessibilityIdentifier("project-files.row.\(node.relativePath)")
-                .accessibilityAction(named: Text(L10n.tr("Delete"))) {
+            return AnyView(Button {
+                previewFile(node.relativePath)
+            } label: {
+                rowLabel(for: row)
+            }
+            .buttonStyle(ProjectFileRowButtonStyle())
+            .contentShape(Rectangle())
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button(role: .destructive) {
                     deleteFile(at: node.relativePath, kind: node.kind)
-                })
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(rowAccessibilityLabel(for: row))
+            .accessibilityHint(L10n.a11yProjectFilesPreviewHint)
+            .accessibilityValue(rowAccessibilityValue(for: row))
+            .accessibilityIdentifier("project-files.row.\(node.relativePath)")
+            .accessibilityAction(named: Text(L10n.tr("Delete"))) {
+                deleteFile(at: node.relativePath, kind: node.kind)
+            })
         }
     }
 
@@ -221,16 +227,18 @@ struct ProjectFileBrowserSheet: View {
                 Image(systemName: row.isExpanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.tertiary)
-                    .frame(width: 12, alignment: .center)
+                    .frame(width: 12, height: 18, alignment: .center)
             } else {
                 Color.clear
-                    .frame(width: 12, height: 1)
+                    .frame(width: 12, height: 18)
             }
             Image(systemName: iconName(for: node))
+                .font(.system(size: 16))
                 .foregroundStyle(.secondary)
-                .frame(width: 22, alignment: .center)
+                .frame(width: 22, height: 18, alignment: .center)
             Text(node.displayName)
                 .foregroundStyle(.primary)
+                .lineLimit(1)
             Spacer()
             if node.kind == .typ {
                 badges(for: node.relativePath)

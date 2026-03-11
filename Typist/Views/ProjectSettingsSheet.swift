@@ -15,6 +15,34 @@ struct ProjectSettingsSheet: View {
     @State private var showingFontPicker = false
     @State private var actionError: String?
 
+    @MainActor
+    private var projectFontGroups: [AppFontGroup] {
+        var grouped: [String: (fileNames: [String], faces: [AppFontFace])] = [:]
+
+        for fileName in document.fontFileNames {
+            let fallbackName = URL(fileURLWithPath: fileName).deletingPathExtension().lastPathComponent
+            let path = FontManager.fontFilePath(for: fileName, in: document)
+            let familyName = path.flatMap(FontManager.typstFamilyName(forBundledPath:)) ?? fallbackName
+            let faceName = path.flatMap(FontManager.typstFaceName(forFontAtPath:)) ?? fallbackName
+            let face = AppFontFace(displayName: faceName, path: path ?? "")
+            grouped[familyName, default: ([], [])].fileNames.append(fileName)
+            grouped[familyName, default: ([], [])].faces.append(face)
+        }
+
+        return grouped.map { familyName, group in
+            AppFontGroup(
+                familyName: familyName,
+                isBuiltIn: false,
+                fileNames: group.fileNames.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending },
+                faces: group.faces.sorted {
+                    $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+                },
+                count: max(1, group.faces.count)
+            )
+        }
+        .sorted { $0.familyName.localizedCaseInsensitiveCompare($1.familyName) == .orderedAscending }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -49,48 +77,33 @@ struct ProjectSettingsSheet: View {
                     header: Text("Fonts"),
                     footer: Text(L10n.projectFontsFooter)
                 ) {
-                    Text(L10n.appFontsTitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    ForEach(appFontLibrary.items) { item in
-                        HStack {
-                            Label(item.displayName, systemImage: "character.textbox")
-                                .foregroundStyle(item.isBuiltIn ? .secondary : .primary)
-                            Spacer()
-                            Text(item.isBuiltIn ? L10n.fontScopeBuiltIn : L10n.fontScopeApp)
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-
-                    Text(L10n.projectFontsTitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    ExpandableFontList(
+                        groups: appFontLibrary.groupedItems,
+                        scopeLabel: { $0.isBuiltIn ? L10n.fontScopeBuiltIn : L10n.fontScopeApp }
+                    )
 
                     if document.fontFileNames.isEmpty {
                         Text(L10n.noProjectFonts)
                             .foregroundStyle(.tertiary)
                     }
 
-                    ForEach(document.fontFileNames, id: \.self) { name in
-                        HStack {
-                            Label(name, systemImage: "character.textbox")
-                            Spacer()
-                            Text(L10n.fontScopeProject)
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
+                    ExpandableFontList(
+                        groups: projectFontGroups,
+                        scopeLabel: { _ in L10n.fontScopeProject },
+                        onDeleteGroup: { group in
+                            InteractionFeedback.notify(.warning)
+                            let nameSet = Set(group.fileNames)
+                            document.fontFileNames.removeAll { nameSet.contains($0) }
+                            for name in nameSet {
+                                FontManager.deleteFont(fileName: name, from: document)
+                            }
                         }
-                    }
-                    .onDelete { offsets in
-                        let names = offsets.map { document.fontFileNames[$0] }
-                        document.fontFileNames.remove(atOffsets: offsets)
-                        for name in names {
-                            FontManager.deleteFont(fileName: name, from: document)
-                        }
-                    }
+                    )
 
-                    Button { showingFontPicker = true } label: {
+                    Button {
+                        InteractionFeedback.impact(.light)
+                        showingFontPicker = true
+                    } label: {
                         Label("Add Font…", systemImage: "plus.circle")
                     }
                 }
@@ -99,7 +112,10 @@ struct ProjectSettingsSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Done") {
+                        InteractionFeedback.impact(.light)
+                        dismiss()
+                    }
                 }
             }
             .alert("Error", isPresented: Binding(
@@ -143,4 +159,5 @@ struct ProjectSettingsSheet: View {
             if typFiles.isEmpty { typFiles = [document.entryFileName] }
         }
     }
+
 }

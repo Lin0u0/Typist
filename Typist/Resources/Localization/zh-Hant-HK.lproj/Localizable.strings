@@ -39,6 +39,7 @@
 "font.scope.built_in" = "內置";
 "font.scope.app" = "App";
 "font.scope.project" = "專案";
+"font.faces_count" = "%d 個字重";
 "app_fonts.export_warning.title" = "不包含 App 字型";
 "app_fonts.export_warning.message" = "專案 ZIP 只會匯出專案目錄。已匯入的 App 字型不會被打包，目標裝置需另行提供這些字型。";
 "settings.version_format" = "版本 %@（%@）";
