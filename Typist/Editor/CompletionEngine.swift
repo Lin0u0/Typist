@@ -7,7 +7,7 @@ import UIKit
 
 struct CompletionItem {
     let label: String
-    let insertText: String
+    let insertText: String?
     let kind: Kind
     let detail: String?
 
@@ -18,6 +18,10 @@ struct CompletionItem {
         case parameter
         case value
         case reference
+    }
+
+    var isInsertable: Bool {
+        insertText != nil
     }
 }
 
@@ -245,6 +249,7 @@ final class CompletionEngine {
         "move": [("dx", "Horizontal offset"), ("dy", "Vertical offset")],
         "rotate": [("angle", "Rotation angle"), ("origin", "Transform origin"), ("reflow", "Reflow")],
         "scale": [
+            ("factor", "Scale factor (e.g. 50%)"),
             ("x", "Horizontal scale"), ("y", "Vertical scale"),
             ("origin", "Transform origin"), ("reflow", "Reflow"),
         ],
@@ -376,6 +381,9 @@ final class CompletionEngine {
     /// Labels defined in other project files (not the current editor text).
     var externalLabels: [(name: String, kind: String)] = []
 
+    /// Image file paths relative to the project root, for path completion inside `image("")`.
+    var imageFiles: [String] = []
+
     /// Typst font weight names.
     private let weightValues: [(String, String)] = [
         ("thin", "100"), ("extralight", "200"), ("light", "300"),
@@ -385,12 +393,150 @@ final class CompletionEngine {
 
     /// Maps (paramName) → static value suggestions. Font is handled dynamically.
     private let staticValueDB: [String: [(String, String?)]] = [
-        "style": [("normal", "Upright"), ("italic", "Italic"), ("oblique", "Oblique")],
-        "dir": [("ltr", "Left to right"), ("rtl", "Right to left")],
         "paper": [
             ("a0", "841 × 1189 mm"), ("a1", "594 × 841 mm"), ("a2", "420 × 594 mm"),
             ("a3", "297 × 420 mm"), ("a4", "210 × 297 mm"), ("a5", "148 × 210 mm"),
             ("a6", "105 × 148 mm"), ("us-letter", "8.5 × 11 in"), ("us-legal", "8.5 × 14 in"),
+        ],
+        "fit": [("cover", "Fill area, crop if needed"), ("contain", "Fit within bounds"), ("stretch", "Stretch to fill")],
+        "format": [("png", nil), ("jpg", nil), ("gif", nil), ("svg", nil)],
+        "linebreaks": [("simple", "Simple algorithm"), ("optimized", "Knuth-Plass algorithm")],
+        "cap": [("butt", "Flat cap"), ("round", "Round cap"), ("square", "Square cap")],
+        "join": [("miter", "Sharp corner"), ("round", "Round corner"), ("bevel", "Flat corner")],
+        "dash": [("solid", nil), ("dotted", nil), ("dashed", nil), ("dash-dotted", nil), ("loosely-dashed", nil), ("densely-dashed", nil)],
+        "numbering": [("1", "Arabic"), ("a", "Lowercase letter"), ("A", "Uppercase letter"), ("i", "Lowercase roman"), ("I", "Uppercase roman"), ("*", "Symbol footnotes")],
+        "supplement": [("auto", "Automatic")],
+    ]
+
+    /// Maps function name → paramName → context-specific value hints.
+    private let contextualValueDB: [String: [String: [(String, String?)]]] = [
+        "text": [
+            "style": [("normal", "Upright"), ("italic", "Italic"), ("oblique", "Oblique")],
+            "dir": [("ltr", "Left to right"), ("rtl", "Right to left")],
+            "number-type": [("lining", "Lining numerals"), ("old-style", "Old-style numerals")],
+            "number-width": [("proportional", "Variable width"), ("tabular", "Fixed width")],
+        ],
+        "bibliography": [
+            "style": [
+                ("ieee", "Engineering / IT"),
+                ("apa", "Psychology / life sciences"),
+                ("mla", "Humanities"),
+                ("chicago-author-date", "Chicago author-date"),
+                ("chicago-notes", "Chicago notes and bibliography"),
+                ("harvard-cite-them-right", "Harvard"),
+                ("american-physics-society", "Physics"),
+                ("vancouver", "Medical / scientific"),
+                ("gb-7714-2015-numeric", "GB/T 7714 numeric"),
+                ("gb-7714-2015-author-date", "GB/T 7714 author-date"),
+            ],
+        ],
+        "stack": [
+            "dir": [("ltr", "Left to right"), ("rtl", "Right to left"), ("ttb", "Top to bottom"), ("btt", "Bottom to top")],
+        ],
+        "figure": [
+            "placement": [("auto", "Automatic"), ("top", "Top of page"), ("bottom", "Bottom of page"), ("none", "Inline")],
+            "kind": [("image", "Image figure"), ("table", "Table figure"), ("raw", "Code figure")],
+            "scope": [("column", "Current column"), ("parent", "Full page")],
+        ],
+        "place": [
+            "alignment": [
+                ("left", nil), ("center", nil), ("right", nil),
+                ("top", nil), ("bottom", nil),
+                ("top + left", nil), ("top + right", nil),
+                ("center + horizon", nil),
+                ("bottom + left", nil), ("bottom + right", nil),
+            ],
+            "scope": [("column", "Current column"), ("parent", "Full page")],
+        ],
+        "grid": [
+            "align": [
+                ("left", nil), ("center", nil), ("right", nil),
+                ("top", nil), ("bottom", nil), ("horizon", nil),
+            ],
+        ],
+        "table": [
+            "align": [
+                ("left", nil), ("center", nil), ("right", nil),
+                ("top", nil), ("bottom", nil), ("horizon", nil),
+            ],
+        ],
+        "page": [
+            "binding": [("left", nil), ("right", nil)],
+            "number-align": [
+                ("left", nil), ("center", nil), ("right", nil),
+                ("top", nil), ("bottom", nil),
+            ],
+        ],
+        "raw": [
+            "align": [("left", nil), ("center", nil), ("right", nil)],
+        ],
+    ]
+
+    /// Parameters listed here are shown as signature hints but should not be inserted as named args.
+    /// These are positional parameters that the user should type directly without `name: `.
+    private let hintOnlyParameters: [String: Set<String>] = [
+        "align": ["alignment"],
+        "bibliography": ["path"],
+        "cmyk": ["cyan", "magenta", "yellow", "key"],
+        "columns": ["count"],
+        "counter": ["key"],
+        "h": ["amount"],
+        "image": ["source"],
+        "link": ["dest"],
+        "lorem": ["words"],
+        "luma": ["lightness"],
+        "numbering": ["pattern"],
+        "place": ["alignment"],
+        "rgb": ["hex"],
+        "rotate": ["angle"],
+        "scale": ["factor"],
+        "state": ["key"],
+        "v": ["amount"],
+    ]
+
+    /// Values to suggest at positional argument positions (after `(` or `,`).
+    /// Tuples: (label, insertText or nil for hint-only, detail).
+    private let positionalValueDB: [String: [(String, String?, String?)]] = [
+        "align": [
+            ("left", "left", "Left"), ("center", "center", "Center"), ("right", "right", "Right"),
+            ("top", "top", "Top"), ("bottom", "bottom", "Bottom"),
+            ("horizon", "horizon", "Horizontal center"),
+            ("start", "start", "Script direction start"), ("end", "end", "Script direction end"),
+            ("left + top", "left + top", nil), ("center + horizon", "center + horizon", nil),
+        ],
+        "place": [
+            ("left", "left", nil), ("center", "center", nil), ("right", "right", nil),
+            ("top", "top", nil), ("bottom", "bottom", nil),
+            ("top + left", "top + left", nil), ("top + right", "top + right", nil),
+            ("center + horizon", "center + horizon", nil),
+            ("bottom + left", "bottom + left", nil), ("bottom + right", "bottom + right", nil),
+        ],
+        "v": [
+            ("em", nil, "Relative to font size"), ("pt", nil, "Points (1/72 in)"),
+            ("mm", nil, "Millimeters"), ("cm", nil, "Centimeters"), ("in", nil, "Inches"),
+            ("%", nil, "Percentage"), ("fr", nil, "Fractional unit"),
+        ],
+        "h": [
+            ("em", nil, "Relative to font size"), ("pt", nil, "Points (1/72 in)"),
+            ("mm", nil, "Millimeters"), ("cm", nil, "Centimeters"), ("in", nil, "Inches"),
+            ("%", nil, "Percentage"), ("fr", nil, "Fractional unit"),
+        ],
+        "rotate": [
+            ("deg", nil, "Degrees"), ("rad", nil, "Radians"), ("turn", nil, "Turns (360° = 1turn)"),
+        ],
+        "columns": [
+            ("2", "2", nil), ("3", "3", nil), ("4", "4", nil),
+        ],
+        "rgb": [
+            ("#000000", "#000000", "Black"), ("#ffffff", "#ffffff", "White"),
+            ("#ff0000", "#ff0000", "Red"), ("#00ff00", "#00ff00", "Green"), ("#0000ff", "#0000ff", "Blue"),
+        ],
+        "luma": [
+            ("0", "0", "Black"), ("128", "128", "Mid-gray"), ("255", "255", "White"),
+        ],
+        "counter": [
+            ("heading", "heading", "Heading counter"), ("page", "page", "Page counter"),
+            ("figure", "figure", "Figure counter"), ("footnote", "footnote", "Footnote counter"),
         ],
     ]
 
@@ -399,6 +545,11 @@ final class CompletionEngine {
     /// Returns completion context for the given cursor position, or nil if none.
     func completions(for text: String, cursorOffset: Int) -> CompletionContext? {
         guard cursorOffset > 0, cursorOffset <= text.count else { return nil }
+
+        // Try image/file path completion (inside `image("...")` etc.)
+        if let pathResult = pathCompletions(for: text, cursorOffset: cursorOffset) {
+            return pathResult
+        }
 
         // Try value completion first (highest priority when after `param:`)
         if let valueResult = valueCompletions(for: text, cursorOffset: cursorOffset) {
@@ -443,6 +594,127 @@ final class CompletionEngine {
             }
         }
         return nil
+    }
+
+    // MARK: - Path Completion (image/include/import)
+
+    /// Functions whose first positional string argument is a file path.
+    private static let pathFunctions: Set<String> = ["image", "figure", "bibliography", "csv", "json", "toml", "yaml", "xml", "read"]
+
+    /// Detects cursor inside a quoted string that is a positional or `source:`/`path:` argument
+    /// of a path-accepting function, and suggests matching project files.
+    private func pathCompletions(for text: String, cursorOffset: Int) -> CompletionContext? {
+        let utf16 = text.utf16
+        guard cursorOffset > 0, cursorOffset <= utf16.count else { return nil }
+        let cursorIndex = utf16.index(utf16.startIndex, offsetBy: cursorOffset)
+
+        // Walk backwards from cursor to find the opening `"`
+        var probe = cursorIndex
+        var quotePos: String.Index?
+        while probe > utf16.startIndex {
+            let prev = utf16.index(before: probe)
+            let ch = text[prev]
+            if ch == "\"" {
+                quotePos = prev
+                break
+            }
+            // Stop at newline or closing quote (means we're not inside a string)
+            if ch == "\n" || ch == "\r" { return nil }
+            probe = prev
+        }
+        guard let openQuote = quotePos else { return nil }
+
+        // The typed path so far (between opening `"` and cursor)
+        let valueStart = utf16.index(after: openQuote)
+        let typedPath = String(text[valueStart..<cursorIndex])
+
+        // From the `"`, determine context: is this inside a path-accepting function?
+        // Walk backwards from `"` skipping whitespace to check what precedes it.
+        var scan = openQuote
+        while scan > utf16.startIndex {
+            let prev = utf16.index(before: scan)
+            let ch = text[prev]
+            if ch == " " || ch == "\t" { scan = prev; continue }
+            break
+        }
+
+        // Check for `paramName: "` pattern — accept `source:` or `path:`
+        var isNamedPathParam = false
+        if scan > utf16.startIndex {
+            let charBefore = text[utf16.index(before: scan)]
+            if charBefore == ":" {
+                // Extract param name before `:`
+                let colonPos = utf16.index(before: scan)
+                var paramEnd = colonPos
+                while paramEnd > utf16.startIndex {
+                    let prev = utf16.index(before: paramEnd)
+                    if text[prev] == " " || text[prev] == "\t" { paramEnd = prev } else { break }
+                }
+                var paramStart = paramEnd
+                while paramStart > utf16.startIndex {
+                    let prev = utf16.index(before: paramStart)
+                    let c = text[prev]
+                    if c.isLetter || c == "-" || c == "_" || c.isNumber { paramStart = prev } else { break }
+                }
+                if paramStart < paramEnd {
+                    let paramName = String(text[paramStart..<paramEnd])
+                    if paramName == "source" || paramName == "path" {
+                        isNamedPathParam = true
+                    }
+                }
+            }
+        }
+
+        // Check for positional argument: `("`  or  `, "`
+        var isPositional = false
+        if !isNamedPathParam, scan > utf16.startIndex {
+            let charBefore = text[utf16.index(before: scan)]
+            if charBefore == "(" || charBefore == "," {
+                isPositional = true
+            }
+        }
+
+        guard isNamedPathParam || isPositional else { return nil }
+
+        // Determine the enclosing function name
+        guard let funcName = findEnclosingFunctionName(in: text, beforeOffset: cursorOffset),
+              Self.pathFunctions.contains(funcName) else { return nil }
+
+        // Select candidate files based on function
+        let candidates: [CompletionItem]
+        if funcName == "image" || funcName == "figure" {
+            candidates = imageFiles.map {
+                CompletionItem(label: $0, insertText: $0, kind: .value, detail: "Image")
+            }
+        } else {
+            // For bibliography, csv, json, etc. — no candidates yet (can be extended)
+            return nil
+        }
+
+        guard !candidates.isEmpty else { return nil }
+
+        let filtered: [CompletionItem]
+        if typedPath.isEmpty {
+            filtered = candidates
+        } else {
+            let lowerTyped = typedPath.lowercased()
+            filtered = candidates.filter { item in
+                let path = item.label.lowercased()
+                // Path prefix match: "images/p" matches "images/photo.png"
+                if path.hasPrefix(lowerTyped) { return true }
+                // No slash typed → also match against filename: "photo" matches "images/photo.png"
+                if !lowerTyped.contains("/") {
+                    let fileName = (item.label as NSString).lastPathComponent.lowercased()
+                    if fileName.contains(lowerTyped) { return true }
+                }
+                return false
+            }
+        }
+
+        guard !filtered.isEmpty else { return nil }
+        if filtered.count == 1, filtered[0].label == typedPath { return nil }
+
+        return .value(prefix: typedPath, isQuoted: true, items: filtered)
     }
 
     // MARK: - Parameter Completion
@@ -503,11 +775,23 @@ final class CompletionEngine {
         let paramItems: [CompletionItem] = params.compactMap { (name, detail) in
             guard !usedParams.contains(name) else { return nil }
             if !typedPrefix.isEmpty, !name.hasPrefix(typedPrefix) { return nil }
-            return CompletionItem(label: name, insertText: name + ": ", kind: .parameter, detail: detail)
+            let insertText = hintOnlyParameters[funcName]?.contains(name) == true ? nil : name + ": "
+            return CompletionItem(label: name, insertText: insertText, kind: .parameter, detail: detail)
         }
-        guard !paramItems.isEmpty else { return nil }
-        if paramItems.count == 1, paramItems[0].label == typedPrefix { return nil }
-        return .parameter(prefix: typedPrefix, items: paramItems)
+
+        // Add positional value suggestions (e.g. `center` for align, unit hints for v/h)
+        var valueItems: [CompletionItem] = []
+        if let positionalValues = positionalValueDB[funcName] {
+            for (label, insert, detail) in positionalValues {
+                if !typedPrefix.isEmpty, !label.localizedCaseInsensitiveContains(typedPrefix) { continue }
+                valueItems.append(CompletionItem(label: label, insertText: insert, kind: .value, detail: detail))
+            }
+        }
+
+        let allItems = valueItems + paramItems
+        guard !allItems.isEmpty else { return nil }
+        if allItems.count == 1, allItems[0].label == typedPrefix { return nil }
+        return .parameter(prefix: typedPrefix, items: allItems)
     }
 
     /// Find the function name for the innermost unmatched `(` before cursorOffset.
@@ -685,9 +969,10 @@ final class CompletionEngine {
         }
         guard paramStart < paramEnd else { return nil }
         let paramName = String(text[paramStart..<paramEnd])
+        let functionName = findEnclosingFunctionName(in: text, beforeOffset: cursorOffset)
 
         // Look up value suggestions
-        let suggestions = valueSuggestionsForParam(paramName)
+        let suggestions = valueSuggestionsForParam(paramName, in: functionName)
         guard !suggestions.isEmpty else { return nil }
 
         let filtered: [CompletionItem]
@@ -704,7 +989,7 @@ final class CompletionEngine {
         return .value(prefix: typedValue, isQuoted: isQuoted, items: filtered)
     }
 
-    private func valueSuggestionsForParam(_ paramName: String) -> [CompletionItem] {
+    private func valueSuggestionsForParam(_ paramName: String, in functionName: String?) -> [CompletionItem] {
         switch paramName {
         case "font":
             return fontFamilies.map {
@@ -712,12 +997,17 @@ final class CompletionEngine {
             }
         case "weight":
             return weightValues.map { (name, num) in
-                CompletionItem(label: name, insertText: name, kind: .value, detail: num)
+                CompletionItem(label: name, insertText: nil, kind: .value, detail: num)
             }
         default:
+            if let functionName, let values = contextualValueDB[functionName]?[paramName] {
+                return values.map { (name, detail) in
+                    CompletionItem(label: name, insertText: nil, kind: .value, detail: detail)
+                }
+            }
             guard let values = staticValueDB[paramName] else { return [] }
             return values.map { (name, detail) in
-                CompletionItem(label: name, insertText: name, kind: .value, detail: detail)
+                CompletionItem(label: name, insertText: nil, kind: .value, detail: detail)
             }
         }
     }

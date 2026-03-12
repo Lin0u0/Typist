@@ -73,7 +73,13 @@ final class CompletionPopupView: UIView {
 
     func confirmSelection() {
         guard selectedIndex < items.count else { return }
+        guard items[selectedIndex].isInsertable else { return }
         onSelect?(items[selectedIndex])
+    }
+
+    var hasInsertableSelection: Bool {
+        guard selectedIndex < items.count else { return false }
+        return items[selectedIndex].isInsertable
     }
 
     func moveSelectionUp() {
@@ -110,26 +116,36 @@ extension CompletionPopupView: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         selectedIndex = indexPath.row
         InteractionFeedback.selection()
-        onSelect?(items[indexPath.row])
+        let item = items[indexPath.row]
+        guard item.isInsertable else { return }
+        onSelect?(item)
     }
 }
 
 // MARK: - CompletionCell
 
 private final class CompletionCell: UITableViewCell {
+    private let selectionCardView = UIView()
     private let iconLabel = UILabel()
     private let nameLabel = UILabel()
     private let detailLabel = UILabel()
+    private let modeLabel = UILabel()
+    private var isHintOnlyItem = false
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         backgroundColor = .clear
         selectionStyle = .none
 
-        let selectedBg = UIView()
-        selectedBg.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.15)
-        selectedBg.layer.cornerRadius = 4
-        selectedBackgroundView = selectedBg
+        selectionCardView.translatesAutoresizingMaskIntoConstraints = false
+        selectionCardView.backgroundColor = .clear
+        selectionCardView.layer.cornerRadius = 6
+        selectionCardView.layer.shadowColor = UIColor.systemBlue.cgColor
+        selectionCardView.layer.shadowOffset = CGSize(width: 0, height: 2)
+        selectionCardView.layer.shadowRadius = 8
+        selectionCardView.layer.shadowOpacity = 0
+        selectionCardView.isUserInteractionEnabled = false
+        contentView.insertSubview(selectionCardView, at: 0)
 
         iconLabel.font = .monospacedSystemFont(ofSize: 12, weight: .bold)
         iconLabel.textAlignment = .center
@@ -144,7 +160,19 @@ private final class CompletionCell: UITableViewCell {
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
         detailLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let stack = UIStackView(arrangedSubviews: [iconLabel, nameLabel, detailLabel])
+        modeLabel.font = .systemFont(ofSize: 10, weight: .semibold)
+        modeLabel.textAlignment = .center
+        modeLabel.text = "Hint"
+        modeLabel.textColor = .secondaryLabel
+        modeLabel.backgroundColor = .systemGray5
+        modeLabel.layer.cornerRadius = 8
+        modeLabel.clipsToBounds = true
+        modeLabel.translatesAutoresizingMaskIntoConstraints = false
+        modeLabel.setContentHuggingPriority(.required, for: .horizontal)
+        modeLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        modeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 34).isActive = true
+
+        let stack = UIStackView(arrangedSubviews: [iconLabel, nameLabel, detailLabel, modeLabel])
         stack.axis = .horizontal
         stack.spacing = 6
         stack.alignment = .center
@@ -152,14 +180,38 @@ private final class CompletionCell: UITableViewCell {
         contentView.addSubview(stack)
 
         NSLayoutConstraint.activate([
+            selectionCardView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 2),
+            selectionCardView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -2),
+            selectionCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
+            selectionCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
             stack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),
             stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
             stack.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
         ])
+
+        updateSelectionAppearance(isActive: false)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        selectionCardView.layer.shadowPath = UIBezierPath(
+            roundedRect: selectionCardView.bounds,
+            cornerRadius: selectionCardView.layer.cornerRadius
+        ).cgPath
+    }
+
+    override func setSelected(_ selected: Bool, animated: Bool) {
+        super.setSelected(selected, animated: animated)
+        updateSelectionAppearance(isActive: selected)
+    }
+
+    override func setHighlighted(_ highlighted: Bool, animated: Bool) {
+        super.setHighlighted(highlighted, animated: animated)
+        updateSelectionAppearance(isActive: highlighted || isSelected)
     }
 
     func configure(with item: CompletionItem) {
@@ -185,5 +237,43 @@ private final class CompletionCell: UITableViewCell {
         }
         nameLabel.text = item.label
         detailLabel.text = item.detail
+        isHintOnlyItem = !item.isInsertable
+        modeLabel.isHidden = item.isInsertable
+        let alpha: CGFloat = item.isInsertable ? 1 : 0.7
+        iconLabel.alpha = alpha
+        nameLabel.alpha = alpha
+        detailLabel.alpha = alpha
+        updateSelectionAppearance(isActive: isSelected || isHighlighted)
+    }
+
+    private func updateSelectionAppearance(isActive: Bool) {
+        let changes = {
+            if isActive {
+                if self.isHintOnlyItem {
+                    self.selectionCardView.backgroundColor = UIColor.systemGray5
+                    self.selectionCardView.layer.shadowColor = UIColor.systemGray.cgColor
+                    self.selectionCardView.layer.shadowOpacity = 0.16
+                    self.selectionCardView.layer.borderColor = UIColor.systemGray3.cgColor
+                    self.selectionCardView.layer.borderWidth = 0.8
+                } else {
+                    self.selectionCardView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.14)
+                    self.selectionCardView.layer.shadowColor = UIColor.systemBlue.cgColor
+                    self.selectionCardView.layer.shadowOpacity = 0.22
+                    self.selectionCardView.layer.borderColor = UIColor.clear.cgColor
+                    self.selectionCardView.layer.borderWidth = 0
+                }
+            } else {
+                self.selectionCardView.backgroundColor = .clear
+                self.selectionCardView.layer.shadowOpacity = 0
+                self.selectionCardView.layer.borderColor = UIColor.clear.cgColor
+                self.selectionCardView.layer.borderWidth = 0
+            }
+        }
+
+        if UIView.areAnimationsEnabled {
+            UIView.animate(withDuration: 0.16, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: changes)
+        } else {
+            changes()
+        }
     }
 }

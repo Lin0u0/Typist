@@ -60,6 +60,7 @@ extension DocumentEditorView {
             do {
                 let result = try await importImageAsset(from: source)
                 await MainActor.run {
+                    refreshImageFiles()
                     enqueueInsertion(result.reference)
                     showImageImportToast(L10n.imageInserted(path: result.relativePath))
                 }
@@ -105,6 +106,9 @@ extension DocumentEditorView {
             }
 
             await MainActor.run {
+                if !insertedImages.isEmpty {
+                    refreshImageFiles()
+                }
                 if !combinedInsertion.isEmpty {
                     enqueueInsertion(combinedInsertion)
                 }

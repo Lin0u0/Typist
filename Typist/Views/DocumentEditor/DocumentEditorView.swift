@@ -64,24 +64,13 @@ struct DocumentEditorView: View {
     @State var pendingManualCompileFeedback = false
     @State var cachedBibEntries: [(key: String, type: String)] = []
     @State var cachedExternalLabels: [(name: String, kind: String)] = []
+    @State var cachedImageFiles: [String] = []
 
     var rootDir: String { ProjectFileManager.projectDirectory(for: document).path }
     var isEditingEntryFile: Bool { currentFileName == document.entryFileName }
 
     var completionFontFamilies: [String] {
-        var seen = Set<String>()
-        var families: [String] = []
-        for path in compileFontPaths {
-            if let name = FontManager.typstFamilyName(forBundledPath: path), seen.insert(name).inserted {
-                families.append(name)
-            }
-        }
-        for family in UIFont.familyNames.sorted() {
-            if seen.insert(family).inserted {
-                families.append(family)
-            }
-        }
-        return families
+        FontManager.completionFamilyNames(from: compileFontPaths)
     }
 
     init(document: TypistDocument, isSidebarVisible: Bool = false) {

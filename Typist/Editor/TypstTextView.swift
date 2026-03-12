@@ -29,6 +29,9 @@ final class TypstTextView: UITextView {
     private var completionPopup: CompletionPopupView?
     /// The `#`-prefixed text that is being completed (e.g. "#se").
     private var completionPrefix: String?
+    /// When true, the next `textViewDidChangeSelection` call should not re-trigger completion.
+    /// Set after a tap-to-dismiss so the selection change from the same tap doesn't re-show the popup.
+    private(set) var suppressNextSelectionCompletion = false
 
     /// When true, `resignFirstResponder()` is refused for this editor instance.
     /// Set by PDFKitView during document reload to prevent PDFKit from
@@ -60,6 +63,7 @@ final class TypstTextView: UITextView {
         setupFindInteraction()
         setupAppearanceObservation()
         setupKeyboardAvoidance()
+        setupCompletionDismissTap()
     }
 
     required init?(coder: NSCoder) {
@@ -70,6 +74,7 @@ final class TypstTextView: UITextView {
         setupFindInteraction()
         setupAppearanceObservation()
         setupKeyboardAvoidance()
+        setupCompletionDismissTap()
     }
 
     deinit {
@@ -138,13 +143,17 @@ final class TypstTextView: UITextView {
             up.wantsPriorityOverSystemBehavior = true
             let down = UIKeyCommand(input: UIKeyCommand.inputDownArrow, modifierFlags: [], action: #selector(completionMoveDown))
             down.wantsPriorityOverSystemBehavior = true
-            let enter = UIKeyCommand(input: "\r", modifierFlags: [], action: #selector(completionConfirm))
-            enter.wantsPriorityOverSystemBehavior = true
-            let tab = UIKeyCommand(input: "\t", modifierFlags: [], action: #selector(completionConfirm))
-            tab.wantsPriorityOverSystemBehavior = true
             let escape = UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(completionDismiss))
             escape.wantsPriorityOverSystemBehavior = true
-            commands.append(contentsOf: [up, down, enter, tab, escape])
+            commands.append(contentsOf: [up, down, escape])
+
+            if completionPopup?.hasInsertableSelection == true {
+                let enter = UIKeyCommand(input: "\r", modifierFlags: [], action: #selector(completionConfirm))
+                enter.wantsPriorityOverSystemBehavior = true
+                let tab = UIKeyCommand(input: "\t", modifierFlags: [], action: #selector(completionConfirm))
+                tab.wantsPriorityOverSystemBehavior = true
+                commands.append(contentsOf: [enter, tab])
+            }
         }
 
         return commands
@@ -172,6 +181,35 @@ final class TypstTextView: UITextView {
 
     private var isCompletionVisible: Bool {
         completionPopup?.isHidden == false
+    }
+
+    // MARK: - Tap-to-Dismiss Completion (iOS touch)
+
+    private var completionDismissTap: UITapGestureRecognizer?
+
+    private func setupCompletionDismissTap() {
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTapToDismissCompletion(_:)))
+        tap.cancelsTouchesInView = false
+        tap.delegate = self
+        addGestureRecognizer(tap)
+        completionDismissTap = tap
+    }
+
+    @objc private func handleTapToDismissCompletion(_ gesture: UITapGestureRecognizer) {
+        guard isCompletionVisible else { return }
+        // Don't dismiss if the tap landed on the popup itself
+        if let popup = completionPopup {
+            let locationInPopup = gesture.location(in: popup)
+            if popup.bounds.contains(locationInPopup) { return }
+        }
+        suppressNextSelectionCompletion = true
+        dismissCompletion()
+    }
+
+    func consumeSelectionSuppression() -> Bool {
+        guard suppressNextSelectionCompletion else { return false }
+        suppressNextSelectionCompletion = false
+        return true
     }
 
     // MARK: - First Responder Guard
@@ -707,6 +745,11 @@ final class TypstTextView: UITextView {
         completionEngine.fontFamilies = families
     }
 
+    /// Update image file paths (relative to project root) for path completion.
+    func updateImageFiles(_ files: [String]) {
+        completionEngine.imageFiles = files
+    }
+
     /// Update BibTeX citation keys for reference completion.
     func updateBibEntries(_ entries: [(key: String, type: String)]) {
         completionEngine.bibEntries = entries
@@ -758,6 +801,7 @@ final class TypstTextView: UITextView {
 
     func acceptCompletion(_ item: CompletionItem) {
         guard let prefix = completionPrefix, let kind = activeCompletionKind else { return }
+        guard let rawInsertText = item.insertText else { return }
         let prefixLen = (prefix as NSString).length
 
         let insertText: String
@@ -765,18 +809,18 @@ final class TypstTextView: UITextView {
         switch kind {
         case .value(let isQuoted):
             if isQuoted {
-                insertText = item.insertText
+                insertText = rawInsertText
             } else {
-                insertText = "\"" + item.insertText + "\""
+                insertText = "\"" + rawInsertText + "\""
             }
         case .parameter:
-            insertText = item.insertText  // e.g. "size: "
+            insertText = rawInsertText  // e.g. "size: "
         case .hash:
-            insertText = "#" + item.insertText  // e.g. "#text()"
+            insertText = "#" + rawInsertText  // e.g. "#text()"
         case .atPrefix:
-            insertText = "@" + item.insertText  // e.g. "@fig:diagram"
+            insertText = "@" + rawInsertText  // e.g. "@fig:diagram"
         case .angleBracket:
-            insertText = item.insertText  // just the key, `<` already typed
+            insertText = rawInsertText  // just the key, `<` already typed
         }
 
         let insertLen = (insertText as NSString).length
@@ -858,5 +902,18 @@ final class TypstTextView: UITextView {
         x = min(max(8, x), maxX)
 
         popup.frame = CGRect(origin: CGPoint(x: x, y: y), size: size)
+    }
+}
+
+// MARK: - UIGestureRecognizerDelegate
+
+extension TypstTextView: UIGestureRecognizerDelegate {
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        // Allow the completion-dismiss tap to coexist with the text view's own gestures
+        if gestureRecognizer === completionDismissTap { return true }
+        return false
     }
 }

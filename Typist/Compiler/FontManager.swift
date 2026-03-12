@@ -275,6 +275,23 @@ enum FontManager {
         return paths
     }
 
+    static func completionFamilyNames(
+        from fontPaths: [String],
+        resolveFamilyName: (String) -> String? = { path in
+            typstFamilyName(forBundledPath: path)
+        }
+    ) -> [String] {
+        var seen = Set<String>()
+        var families: [String] = []
+
+        for path in fontPaths {
+            guard let name = resolveFamilyName(path), seen.insert(name).inserted else { continue }
+            families.append(name)
+        }
+
+        return families
+    }
+
 }
     private struct FontNameRecord {
         let platformID: UInt16

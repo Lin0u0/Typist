@@ -225,6 +225,17 @@ extension DocumentEditorView {
             }
         }
         cachedExternalLabels = labels
+
+        refreshImageFiles()
+    }
+
+    func refreshImageFiles() {
+        let allFiles = ProjectFileManager.listAllFiles(in: ProjectFileManager.projectDirectory(for: document))
+        let imageExtensions = ProjectFileManager.supportedImageFileExtensions
+        cachedImageFiles = allFiles.filter { path in
+            let ext = (path as NSString).pathExtension.lowercased()
+            return imageExtensions.contains(ext)
+        }
     }
 
     func triggerZipExport() {

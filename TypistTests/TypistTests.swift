@@ -487,6 +487,85 @@ struct TypistTests {
         ])
     }
 
+    @Test func fontManagerCompletionFamiliesOnlyUseCompileFonts() {
+        let fontPaths = ["/fonts/A.otf", "/fonts/B.otf", "/fonts/C.otf", "/fonts/A-dup.otf"]
+        let families = FontManager.completionFamilyNames(from: fontPaths) { path in
+            switch path {
+            case "/fonts/A.otf", "/fonts/A-dup.otf":
+                return "Alpha Sans"
+            case "/fonts/B.otf":
+                return "Beta Serif"
+            case "/fonts/C.otf":
+                return nil
+            default:
+                return nil
+            }
+        }
+
+        #expect(families == ["Alpha Sans", "Beta Serif"])
+    }
+
+    @Test func completionEngineFontValuesRemainInsertable() {
+        let engine = CompletionEngine()
+        engine.fontFamilies = ["Source Han Sans SC"]
+
+        let result = engine.completions(for: "#text(font: So", cursorOffset: 14)
+
+        guard case .value(_, let isQuoted, let items)? = result else {
+            Issue.record("Expected font value completion")
+            return
+        }
+
+        #expect(!isQuoted)
+        #expect(items.map(\.label) == ["Source Han Sans SC"])
+        #expect(items.allSatisfy { $0.isInsertable })
+    }
+
+    @Test func completionEngineStaticValuesAreHintOnly() throws {
+        let engine = CompletionEngine()
+
+        let result = engine.completions(for: "#text(weight: bo", cursorOffset: 16)
+
+        guard case .value(_, _, let items)? = result else {
+            Issue.record("Expected weight value completion")
+            return
+        }
+
+        let bold = try #require(items.first(where: { $0.label == "bold" }))
+        #expect(!bold.isInsertable)
+        #expect(bold.insertText == nil)
+    }
+
+    @Test func completionEngineBibliographyStyleUsesBibliographyHints() {
+        let engine = CompletionEngine()
+        let text = "#bibliography(\"refs.bib\", style: ap"
+
+        let result = engine.completions(for: text, cursorOffset: text.count)
+
+        guard case .value(_, _, let items)? = result else {
+            Issue.record("Expected bibliography style completion")
+            return
+        }
+
+        #expect(items.contains(where: { $0.label == "apa" }))
+        #expect(!items.contains(where: { $0.label == "italic" }))
+    }
+
+    @Test func completionEngineLoremWordsIsHintOnly() throws {
+        let engine = CompletionEngine()
+
+        let result = engine.completions(for: "#lorem(w", cursorOffset: 8)
+
+        guard case .parameter(_, let items)? = result else {
+            Issue.record("Expected lorem parameter completion")
+            return
+        }
+
+        let words = try #require(items.first(where: { $0.label == "words" }))
+        #expect(!words.isInsertable)
+        #expect(words.insertText == nil)
+    }
+
     @Test func zipProjectDoesNotIncludeAppFonts() throws {
         let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
         let appRoot = makeTempDirectory()

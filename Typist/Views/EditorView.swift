@@ -17,6 +17,7 @@ struct EditorView: UIViewRepresentable {
     var fontFamilies: [String] = []
     var bibEntries: [(key: String, type: String)] = []
     var externalLabels: [(name: String, kind: String)] = []
+    var imageFiles: [String] = []
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -45,6 +46,7 @@ struct EditorView: UIViewRepresentable {
         textView.updateFontFamilies(fontFamilies)
         textView.updateBibEntries(bibEntries)
         textView.updateExternalLabels(externalLabels)
+        textView.updateImageFiles(imageFiles)
 
         // Consume pending find request — defer mutation to avoid writing state during view update.
         if findRequested {
@@ -109,7 +111,16 @@ struct EditorView: UIViewRepresentable {
 
         func textViewDidChangeSelection(_ textView: UITextView) {
             guard let typstTextView = textView as? TypstTextView else { return }
+            // After a tap-to-dismiss, skip re-triggering completion for this selection change
+            if typstTextView.consumeSelectionSuppression() { return }
             typstTextView.updateCompletion()
+        }
+
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            // Only dismiss on user-initiated scrolls (drag/momentum), not on auto-scroll from typing
+            guard scrollView.isDragging || scrollView.isDecelerating else { return }
+            guard let typstTextView = scrollView as? TypstTextView else { return }
+            typstTextView.dismissCompletion()
         }
     }
 }
