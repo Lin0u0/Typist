@@ -201,6 +201,12 @@ final class PDFContainerView: UIView {
 struct PDFKitView: UIViewRepresentable {
     let document: PDFDocument
     let focusCoordinator: EditorFocusCoordinator?
+    var scrollTarget: PreviewScrollTarget?
+    var onTapLocation: ((_ page: Int, _ yPoints: Float) -> Void)?
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onTapLocation: onTapLocation)
+    }
 
     func makeUIView(context: Context) -> PDFContainerView {
         let container = PDFContainerView()
@@ -215,14 +221,64 @@ struct PDFKitView: UIViewRepresentable {
         container.accessibilityLabel = L10n.a11yPreviewLabel
         container.accessibilityHint = L10n.a11yPreviewHint
         container.accessibilityValue = L10n.a11yPreviewValueReady
+
+        let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
+        tapGesture.numberOfTapsRequired = 2
+        pdfView.addGestureRecognizer(tapGesture)
+        context.coordinator.pdfView = pdfView
+
         return container
     }
 
     func updateUIView(_ container: PDFContainerView, context: Context) {
+        context.coordinator.onTapLocation = onTapLocation
+        context.coordinator.pdfView = container.pdfView
         container.accessibilityLabel = L10n.a11yPreviewLabel
         container.accessibilityHint = L10n.a11yPreviewHint
         container.accessibilityValue = L10n.a11yPreviewValueReady
         container.reloadDocument(document, focusCoordinator: focusCoordinator)
+
+        if let target = scrollTarget {
+            container.scrollToPosition(page: target.page, yPoints: target.yPoints)
+        }
+    }
+
+    final class Coordinator: NSObject {
+        weak var pdfView: PDFView?
+        var onTapLocation: ((_ page: Int, _ yPoints: Float) -> Void)?
+
+        init(onTapLocation: ((_ page: Int, _ yPoints: Float) -> Void)?) {
+            self.onTapLocation = onTapLocation
+        }
+
+        @objc func handleTap(_ gesture: UITapGestureRecognizer) {
+            guard let pdfView, let document = pdfView.document else { return }
+            let tapPoint = gesture.location(in: pdfView)
+
+            guard let tappedPage = pdfView.page(for: tapPoint, nearest: true) else { return }
+            let pagePoint = pdfView.convert(tapPoint, to: tappedPage)
+            let pageIndex = document.index(for: tappedPage)
+
+            // PDFKit Y is from bottom-left; convert to top-down.
+            let pageBounds = tappedPage.bounds(for: .mediaBox)
+            let yFromTop = pageBounds.height - pagePoint.y
+
+            onTapLocation?(pageIndex, Float(yFromTop))
+        }
+    }
+}
+
+extension PDFContainerView {
+    func scrollToPosition(page: Int, yPoints: Float) {
+        guard let document = pdfView.document,
+              page < document.pageCount,
+              let pdfPage = document.page(at: page) else { return }
+
+        // Convert top-down Y to PDFKit bottom-up coordinate.
+        let pageBounds = pdfPage.bounds(for: .mediaBox)
+        let pdfY = pageBounds.height - CGFloat(yPoints)
+        let destination = PDFDestination(page: pdfPage, at: CGPoint(x: 0, y: pdfY))
+        pdfView.go(to: destination)
     }
 }
 

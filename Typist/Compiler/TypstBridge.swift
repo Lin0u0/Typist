@@ -90,4 +90,79 @@ struct TypstBridge {
         return .failure(.compilerNotLinked)
 #endif
     }
+
+    /// Compile Typst source to PDF data and extract a source map for
+    /// bidirectional editor ↔ preview sync.
+    nonisolated static func compileWithSourceMap(source: String, fontPaths: [String], rootDir: String? = nil) -> Result<(Data, SourceMap), TypstBridgeError> {
+#if TYPST_FFI_AVAILABLE
+        let cacheDir = packageCacheDirectoryURL?.path
+
+        return source.withCString { cSource in
+            let mutablePtrs: [UnsafeMutablePointer<CChar>?] = fontPaths.map { strdup($0) }
+            defer { mutablePtrs.forEach { free($0) } }
+
+            return mutablePtrs.withUnsafeBufferPointer { buf in
+                let constBuf = UnsafeRawBufferPointer(buf)
+                    .bindMemory(to: UnsafePointer<CChar>?.self)
+
+                return (cacheDir ?? "").withCString { cCacheDir in
+                  return (rootDir ?? "").withCString { cRootDir in
+                    var opts = TypstOptions(
+                        font_paths: constBuf.baseAddress,
+                        font_path_count: buf.count,
+                        cache_dir: cCacheDir,
+                        root_dir: rootDir != nil ? cRootDir : nil
+                    )
+                    let result = typst_compile_with_source_map(cSource, &opts)
+                    defer { typst_free_result_with_map(result) }
+
+                    if result.success, let pdfPtr = result.pdf_data {
+                        let pdfData = Data(bytes: pdfPtr, count: Int(result.pdf_len))
+                        let sourceMap = Self.parseSourceMap(result)
+                        return .success((pdfData, sourceMap))
+                    } else if let errPtr = result.error_message {
+                        return .failure(.compilationFailed(String(cString: errPtr)))
+                    } else {
+                        return .failure(.compilationFailed(L10n.tr("error.typst.unknown_compilation")))
+                    }
+                  }
+                }
+            }
+        }
+#else
+        return .failure(.compilerNotLinked)
+#endif
+    }
+
+#if TYPST_FFI_AVAILABLE
+    nonisolated private static func parseSourceMap(_ result: TypstResultWithMap) -> SourceMap {
+        guard let ptr = result.source_map, result.source_map_len > 0 else {
+            return SourceMap(byOffset: [], byPosition: [])
+        }
+
+        let buffer = UnsafeBufferPointer(start: ptr, count: Int(result.source_map_len))
+        var entries: [SourceMapLocation] = []
+        entries.reserveCapacity(buffer.count)
+
+        for entry in buffer {
+            entries.append(SourceMapLocation(
+                page: Int(entry.page),
+                yPoints: entry.y_pt,
+                xPoints: entry.x_pt,
+                line: Int(entry.line),
+                column: Int(entry.column),
+                sourceOffset: Int(entry.source_offset),
+                sourceLength: Int(entry.source_length)
+            ))
+        }
+
+        // byOffset is already sorted by source_offset from Rust.
+        let byPosition = entries.sorted { a, b in
+            if a.page != b.page { return a.page < b.page }
+            return a.yPoints < b.yPoints
+        }
+
+        return SourceMap(byOffset: entries, byPosition: byPosition)
+    }
+#endif
 }

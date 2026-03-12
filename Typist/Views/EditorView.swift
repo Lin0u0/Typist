@@ -18,6 +18,8 @@ struct EditorView: UIViewRepresentable {
     @Binding var viewState: EditorViewState
     @Binding var cursorJumpOffset: Int?
     var focusCoordinator: EditorFocusCoordinator? = nil
+    var sourceMap: SourceMap?
+    var syncCoordinator: SyncCoordinator?
     var theme: EditorTheme = .system
     var errorLines: Set<Int> = []
     var onPhotoTapped: () -> Void = {}
@@ -154,6 +156,30 @@ struct EditorView: UIViewRepresentable {
             // After a tap-to-dismiss, skip re-triggering completion for this selection change
             if typstTextView.consumeSelectionSuppression() { return }
             typstTextView.updateCompletion()
+            syncCursorToPreview(textView)
+        }
+
+        private func syncCursorToPreview(_ textView: UITextView) {
+            guard let syncCoordinator = parent.syncCoordinator,
+                  let sourceMap = parent.sourceMap,
+                  !sourceMap.isEmpty else { return }
+            guard syncCoordinator.beginSync(.editorToPreview) else { return }
+
+            let cursorLocation = textView.selectedRange.location
+            let text = textView.text as NSString
+            // Count newlines up to cursor to get 1-based line number.
+            let prefix = cursorLocation <= text.length
+                ? text.substring(to: cursorLocation)
+                : textView.text ?? ""
+            let line = prefix.components(separatedBy: "\n").count
+
+            if let target = sourceMap.pdfPosition(forLine: line) {
+                syncCoordinator.previewScrollTarget = PreviewScrollTarget(
+                    page: target.page,
+                    yPoints: target.yPoints
+                )
+            }
+            syncCoordinator.endSync()
         }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {

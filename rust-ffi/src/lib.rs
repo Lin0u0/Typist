@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use typst::diag::{FileError, FileResult, PackageError, SourceDiagnostic};
 use typst::foundations::{Bytes, Datetime};
-use typst::layout::PagedDocument;
+use typst::layout::{Frame, FrameItem, PagedDocument};
 use typst::syntax::package::PackageSpec;
 use typst::syntax::{FileId, Source, Span, VirtualPath};
 use typst::text::{Font, FontBook};
@@ -554,6 +554,194 @@ pub unsafe extern "C" fn typst_free_result(result: TypstResult) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// C FFI — source map types and compile-with-source-map
+// ---------------------------------------------------------------------------
+
+/// A single source-map entry mapping a PDF position to a source location.
+#[repr(C)]
+pub struct SourceMapEntry {
+    /// 0-based page index.
+    pub page: u32,
+    /// Y position in PDF points from the top of the page.
+    pub y_pt: f32,
+    /// X position in PDF points from the left of the page.
+    pub x_pt: f32,
+    /// Byte offset in the source file.
+    pub source_offset: u32,
+    /// Byte length of the mapped source range.
+    pub source_length: u16,
+    /// 1-based line number.
+    pub line: u32,
+    /// 1-based column number.
+    pub column: u16,
+}
+
+/// Extended result that includes both PDF data and a source map.
+/// Free with `typst_free_result_with_map`.
+#[repr(C)]
+pub struct TypstResultWithMap {
+    pub pdf_data: *mut u8,
+    pub pdf_len: usize,
+    pub error_message: *mut c_char,
+    pub success: bool,
+    pub source_map: *mut SourceMapEntry,
+    pub source_map_len: usize,
+}
+
+/// Walk a frame recursively, collecting source map entries for text items.
+fn walk_frame(
+    frame: &Frame,
+    page_index: u32,
+    x_offset: f64,
+    y_offset: f64,
+    source: &Source,
+    entries: &mut Vec<SourceMapEntry>,
+) {
+    for (pos, item) in frame.items() {
+        let x = x_offset + pos.x.to_pt();
+        let y = y_offset + pos.y.to_pt();
+
+        match item {
+            FrameItem::Text(text_item) => {
+                // Use the first glyph's span for this text run.
+                if let Some(glyph) = text_item.glyphs.first() {
+                    let span = glyph.span.0;
+                    if span.is_detached() {
+                        continue;
+                    }
+                    // Only map spans from the main source file.
+                    if let Some(id) = span.id() {
+                        if id != source.id() {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
+                    if let Some(range) = source.range(span).or_else(|| span.range()) {
+                        if let Some((line, col)) = source.lines().byte_to_line_column(range.start) {
+                            entries.push(SourceMapEntry {
+                                page: page_index,
+                                y_pt: y as f32,
+                                x_pt: x as f32,
+                                source_offset: range.start as u32,
+                                source_length: (range.end - range.start).min(u16::MAX as usize) as u16,
+                                line: (line + 1) as u32,
+                                column: (col + 1) as u16,
+                            });
+                        }
+                    }
+                }
+            }
+            FrameItem::Group(group) => {
+                // Use translation components only (ignoring rotation/scale).
+                let gx = x + group.transform.tx.to_pt();
+                let gy = y + group.transform.ty.to_pt();
+                walk_frame(&group.frame, page_index, gx, gy, source, entries);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Extract a source map from a compiled document.
+/// Returns entries sorted by source offset, deduplicated by line.
+fn extract_source_map(document: &PagedDocument, source: &Source) -> Vec<SourceMapEntry> {
+    let mut entries = Vec::new();
+
+    for (page_index, page) in document.pages.iter().enumerate() {
+        walk_frame(&page.frame, page_index as u32, 0.0, 0.0, source, &mut entries);
+    }
+
+    // Sort by source offset.
+    entries.sort_by_key(|e| e.source_offset);
+
+    // Deduplicate by line — keep the first entry for each line.
+    entries.dedup_by_key(|e| e.line);
+
+    entries
+}
+
+/// Compile Typst source to PDF and extract a source map.
+///
+/// # Safety
+/// Same requirements as `typst_compile`.
+/// Free the result with `typst_free_result_with_map`.
+#[no_mangle]
+pub unsafe extern "C" fn typst_compile_with_source_map(
+    source: *const c_char,
+    options: *const TypstOptions,
+) -> TypstResultWithMap {
+    if source.is_null() {
+        return error_result_with_map("null source pointer");
+    }
+    let source_str = match CStr::from_ptr(source).to_str() {
+        Ok(s) => s,
+        Err(_) => return error_result_with_map("source is not valid UTF-8"),
+    };
+
+    let world = SimpleWorld::new(source_str, options);
+
+    match typst::compile::<PagedDocument>(&world).output {
+        Ok(document) => {
+            let map_entries = extract_source_map(&document, &world.source);
+
+            match pdf(&document, &PdfOptions::default()) {
+                Ok(bytes) => {
+                    let pdf_len = bytes.len();
+                    let mut pdf_boxed = bytes.into_boxed_slice();
+                    let pdf_ptr = pdf_boxed.as_mut_ptr();
+                    std::mem::forget(pdf_boxed);
+
+                    let map_len = map_entries.len();
+                    let (map_ptr, map_len) = if map_len > 0 {
+                        let mut map_boxed = map_entries.into_boxed_slice();
+                        let ptr = map_boxed.as_mut_ptr();
+                        std::mem::forget(map_boxed);
+                        (ptr, map_len)
+                    } else {
+                        (std::ptr::null_mut(), 0)
+                    };
+
+                    TypstResultWithMap {
+                        pdf_data: pdf_ptr,
+                        pdf_len,
+                        error_message: std::ptr::null_mut(),
+                        success: true,
+                        source_map: map_ptr,
+                        source_map_len: map_len,
+                    }
+                }
+                Err(e) => error_result_with_map(&format_diagnostics(&world, &e)),
+            }
+        }
+        Err(e) => error_result_with_map(&format_diagnostics(&world, &e)),
+    }
+}
+
+/// Free a `TypstResultWithMap`.
+///
+/// # Safety
+/// Must have been returned by `typst_compile_with_source_map` and not yet freed.
+#[no_mangle]
+pub unsafe extern "C" fn typst_free_result_with_map(result: TypstResultWithMap) {
+    if !result.pdf_data.is_null() {
+        drop(Box::from_raw(std::slice::from_raw_parts_mut(
+            result.pdf_data,
+            result.pdf_len,
+        )));
+    }
+    if !result.error_message.is_null() {
+        drop(CString::from_raw(result.error_message));
+    }
+    if !result.source_map.is_null() {
+        drop(Box::from_raw(std::slice::from_raw_parts_mut(
+            result.source_map,
+            result.source_map_len,
+        )));
+    }
+}
+
 /// Get the embedded typst-ios crate version.
 ///
 /// Returns a pointer to a static null-terminated UTF-8 string.
@@ -574,6 +762,18 @@ fn error_result(msg: &str) -> TypstResult {
         pdf_len: 0,
         error_message: c.into_raw(),
         success: false,
+    }
+}
+
+fn error_result_with_map(msg: &str) -> TypstResultWithMap {
+    let c = CString::new(msg).unwrap_or_else(|_| CString::new("error").unwrap());
+    TypstResultWithMap {
+        pdf_data: std::ptr::null_mut(),
+        pdf_len: 0,
+        error_message: c.into_raw(),
+        success: false,
+        source_map: std::ptr::null_mut(),
+        source_map_len: 0,
     }
 }
 
@@ -647,6 +847,23 @@ mod tests {
 
         assert!(rendered.contains("unexpected token"));
         assert!(rendered.contains("(main.typ:1:1)"));
+    }
+
+    #[test]
+    fn extract_source_map_produces_entries() {
+        let source_text = "= Hello World\n\nThis is a test paragraph.";
+        let world = unsafe { SimpleWorld::new(source_text, std::ptr::null()) };
+        let compiled = typst::compile::<PagedDocument>(&world);
+        let document = compiled.output.expect("compilation should succeed");
+        let entries = extract_source_map(&document, &world.source);
+
+        assert!(!entries.is_empty(), "source map should have entries");
+        // All entries should be on page 0 for a simple document.
+        assert!(entries.iter().all(|e| e.page == 0));
+        // Lines should be 1-based and > 0.
+        assert!(entries.iter().all(|e| e.line >= 1));
+        // Columns should be 1-based and > 0.
+        assert!(entries.iter().all(|e| e.column >= 1));
     }
 
     #[derive(Clone)]
